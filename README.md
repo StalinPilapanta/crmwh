@@ -1,36 +1,126 @@
-This is a [Next.js](https://nextjs.org) project bootstrapped with [`create-next-app`](https://nextjs.org/docs/app/api-reference/cli/create-next-app).
+# CRM WhatsApp SaaS
 
-## Getting Started
+CRM multi-tenant con integración de WhatsApp Business API, agentes de IA conversacionales, pipeline de ventas, y gestión de inventario via Dropi. Diseñado para equipos de ventas que atienden leads por WhatsApp.
 
-First, run the development server:
+## Tech Stack
 
-```bash
-npm run dev
-# or
-yarn dev
-# or
-pnpm dev
-# or
-bun dev
+- **Framework**: Next.js 16 (App Router)
+- **Language**: TypeScript
+- **Styling**: Tailwind CSS v4 (CSS-only config)
+- **Database**: Supabase (PostgreSQL + Auth + Storage + Realtime)
+- **State**: Zustand + React Query
+- **UI**: Lucide React, Recharts, dnd-kit
+- **AI**: OpenAI / Anthropic / OpenRouter (configurable por tenant)
+- **Mensajería**: WhatsApp Business Cloud API (Meta)
+- **Inventario**: Dropi (dropshipping)
+
+## Arquitectura
+
+```
+src/
+├── app/
+│   ├── (auth)/          # Login, registro, invitaciones
+│   ├── (dashboard)/     # Panel principal (layout con sidebar)
+│   │   ├── agents/      # Configuración de agentes IA
+│   │   ├── conversations/ # Chat en tiempo real
+│   │   ├── integrations/  # Dropi, AI providers
+│   │   ├── inventory/     # Productos y órdenes
+│   │   ├── leads/         # Gestión de leads
+│   │   ├── pipeline/      # Kanban de ventas
+│   │   └── settings/      # Config: equipo, scoring, followup, WhatsApp
+│   └── api/
+│       ├── agents/        # CRUD agentes + knowledge base
+│       ├── conversations/ # Conversaciones + handoff
+│       ├── cron/          # Jobs: followup, session-health, dropi-sync
+│       ├── integrations/  # Dropi, AI provider config
+│       ├── inventory/     # Productos y órdenes
+│       ├── whatsapp/      # Webhook + sesiones
+│       └── ...
+├── components/
+│   ├── agents/          # Knowledge upload
+│   ├── conversations/   # Chat window, message bubble, handoff
+│   ├── layout/          # Sidebar, header, user menu
+│   ├── pipeline/        # Kanban board
+│   └── shared/          # Empty state, skeleton
+├── hooks/               # useRealtime, useConversations, useNotifications, useTenant
+├── lib/
+│   ├── ai/             # Router, RAG, scoring, handoff detector
+│   ├── dropi/          # Client + types para Dropi API
+│   ├── supabase/       # Server, client, admin clients
+│   ├── whatsapp/       # Client + webhook verify
+│   ├── encryption.ts   # AES-256-GCM encrypt/decrypt
+│   ├── notifications.ts # Create notifications helpers
+│   ├── permissions.ts  # Role-based permission checks
+│   ├── rate-limit.ts   # In-memory rate limiter
+│   └── utils.ts        # cn() utility
+└── proxy.ts            # Middleware (Next.js 16 convention)
 ```
 
-Open [http://localhost:3000](http://localhost:3000) with your browser to see the result.
+## Setup
 
-You can start editing the page by modifying `app/page.tsx`. The page auto-updates as you edit the file.
+### Requisitos
 
-This project uses [`next/font`](https://nextjs.org/docs/app/building-your-application/optimizing/fonts) to automatically optimize and load [Geist](https://vercel.com/font), a new font family for Vercel.
+- Node.js 18+
+- Cuenta de Supabase
+- WhatsApp Business API (Meta Cloud)
+- Cuenta de Dropi (opcional, para inventario)
 
-## Learn More
+### Instalación
 
-To learn more about Next.js, take a look at the following resources:
+```bash
+# Clonar e instalar dependencias
+git clone <repo-url>
+cd crmwh
+npm install
 
-- [Next.js Documentation](https://nextjs.org/docs) - learn about Next.js features and API.
-- [Learn Next.js](https://nextjs.org/learn) - an interactive Next.js tutorial.
+# Configurar variables de entorno
+cp .env.local.example .env.local
+# Editar .env.local con tus credenciales
 
-You can check out [the Next.js GitHub repository](https://github.com/vercel/next.js) - your feedback and contributions are welcome!
+# Ejecutar migraciones en Supabase
+# (aplicar archivos en supabase/migrations/ en orden)
 
-## Deploy on Vercel
+# Iniciar servidor de desarrollo
+npm run dev
+```
 
-The easiest way to deploy your Next.js app is to use the [Vercel Platform](https://vercel.com/new?utm_medium=default-template&filter=next.js&utm_source=create-next-app&utm_campaign=create-next-app-readme) from the creators of Next.js.
+### Scripts
 
-Check out our [Next.js deployment documentation](https://nextjs.org/docs/app/building-your-application/deploying) for more details.
+| Comando          | Descripción                    |
+|-----------------|--------------------------------|
+| `npm run dev`   | Servidor de desarrollo         |
+| `npm run build` | Build de producción            |
+| `npm run start` | Iniciar en modo producción     |
+| `npm run lint`  | Ejecutar ESLint                |
+
+## Variables de Entorno
+
+| Variable | Descripción | Requerida |
+|----------|-------------|-----------|
+| `NEXT_PUBLIC_SUPABASE_URL` | URL del proyecto Supabase | ✅ |
+| `NEXT_PUBLIC_SUPABASE_ANON_KEY` | Anon key de Supabase | ✅ |
+| `SUPABASE_SERVICE_ROLE_KEY` | Service role key (admin ops) | ✅ |
+| `WHATSAPP_VERIFY_TOKEN` | Token para verificar webhook de Meta | ✅ |
+| `WHATSAPP_APP_SECRET` | App secret para validar HMAC | ✅ |
+| `ENCRYPTION_KEY` | Key hex de 32 bytes para AES-256-GCM | ✅ |
+| `CRON_SECRET` | Bearer token para proteger cron endpoints | ✅ |
+| `NEXT_PUBLIC_APP_URL` | URL pública de la app | ✅ |
+| `OPENAI_API_KEY` | API key de OpenAI | Opcional |
+| `ANTHROPIC_API_KEY` | API key de Anthropic | Opcional |
+| `OPENROUTER_API_KEY` | API key de OpenRouter | Opcional |
+| `GOOGLE_CLIENT_ID` | OAuth client ID para Google Drive | Opcional |
+| `GOOGLE_CLIENT_SECRET` | OAuth client secret | Opcional |
+| `GOOGLE_REDIRECT_URI` | Redirect URI para OAuth | Opcional |
+
+## Características Principales
+
+- **Multi-tenant**: Aislamiento completo por organización via RLS
+- **Agentes IA**: Respuesta automática con RAG sobre documentos del negocio
+- **Handoff inteligente**: Detección de intención de hablar con humano + timeout automático
+- **Pipeline de ventas**: Kanban drag & drop con etapas configurables
+- **Lead scoring**: Scoring automático basado en comportamiento
+- **Follow-up automático**: Secuencias programables con horario laboral
+- **Inventario Dropi**: Sincronización de productos y creación de órdenes
+- **Tiempo real**: Actualizaciones instantáneas via Supabase Realtime
+- **Roles**: Admin, Supervisor, Agente con permisos granulares
+- **Rate limiting**: Protección por tenant contra abuso

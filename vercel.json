@@ -1,0 +1,20 @@
+{
+  "crons": [
+    {
+      "path": "/api/cron/followup",
+      "schedule": "*/5 * * * *"
+    },
+    {
+      "path": "/api/cron/dropi-sync",
+      "schedule": "*/30 * * * *"
+    },
+    {
+      "path": "/api/cron/gdrive-sync",
+      "schedule": "0 * * * *"
+    },
+    {
+      "path": "/api/cron/session-health",
+      "schedule": "*/2 * * * *"
+    }
+  ]
+}
