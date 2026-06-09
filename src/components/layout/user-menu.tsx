@@ -99,7 +99,7 @@ export function UserMenu() {
       {open && (
         <>
           <div className="fixed inset-0 z-40" onClick={() => setOpen(false)} />
-          <div className="absolute right-0 top-full z-50 mt-1 w-52 rounded-lg border bg-card py-1 shadow-lg">
+          <div className="absolute right-0 top-full z-50 mt-1 w-52 rounded-lg border bg-card py-1 shadow-lg text-foreground">
             {/* Status section */}
             <div className="px-4 py-2 border-b">
               <p className="text-xs font-medium text-muted-foreground mb-2">

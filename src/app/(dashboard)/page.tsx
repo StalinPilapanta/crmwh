@@ -1,3 +1,6 @@
+"use client";
+
+import { useEffect, useState } from "react";
 import {
   MessageSquare,
   Users,
@@ -6,8 +9,51 @@ import {
   Zap,
 } from "lucide-react";
 import { MetricCard } from "@/components/dashboard/metric-card";
+import { createClient } from "@/lib/supabase/client";
+
+interface Metrics {
+  activeConversations: number;
+  newLeads: number;
+  totalLeads: number;
+  avgScore: number;
+  messagesToday: number;
+}
 
 export default function DashboardPage() {
+  const [metrics, setMetrics] = useState<Metrics | null>(null);
+
+  useEffect(() => {
+    async function loadMetrics() {
+      const supabase = createClient();
+
+      const now = new Date();
+      const weekStart = new Date(now.getTime() - 7 * 24 * 60 * 60 * 1000).toISOString();
+      const todayStart = new Date(now.getFullYear(), now.getMonth(), now.getDate()).toISOString();
+
+      const [convRes, leadsWeekRes, leadsAllRes, messagesRes] = await Promise.all([
+        supabase.from("conversations").select("*", { count: "exact", head: true }).eq("status", "active"),
+        supabase.from("leads").select("*", { count: "exact", head: true }).gte("created_at", weekStart),
+        supabase.from("leads").select("score"),
+        supabase.from("messages").select("*", { count: "exact", head: true }).gte("created_at", todayStart),
+      ]);
+
+      const scores = (leadsAllRes.data || []).filter((l) => l.score > 0);
+      const avgScore = scores.length > 0
+        ? Math.round(scores.reduce((sum, l) => sum + l.score, 0) / scores.length)
+        : 0;
+
+      setMetrics({
+        activeConversations: convRes.count || 0,
+        newLeads: leadsWeekRes.count || 0,
+        totalLeads: leadsAllRes.data?.length || 0,
+        avgScore,
+        messagesToday: messagesRes.count || 0,
+      });
+    }
+
+    loadMetrics();
+  }, []);
+
   return (
     <div className="space-y-6">
       <div>
@@ -21,27 +67,27 @@ export default function DashboardPage() {
       <div className="grid gap-4 sm:grid-cols-2 lg:grid-cols-4">
         <MetricCard
           title="Conversaciones activas"
-          value={0}
+          value={metrics?.activeConversations ?? "—"}
           icon={MessageSquare}
-          description="hoy"
+          description="en este momento"
         />
         <MetricCard
           title="Leads nuevos"
-          value={0}
+          value={metrics?.newLeads ?? "—"}
           icon={Users}
           description="esta semana"
         />
         <MetricCard
-          title="Tasa de conversión"
-          value="0%"
+          title="Score promedio"
+          value={metrics ? `${metrics.avgScore}` : "—"}
           icon={TrendingUp}
-          trend={{ value: 0, isPositive: true }}
+          description="de todos los leads"
         />
         <MetricCard
-          title="Tiempo de respuesta"
-          value="--"
+          title="Mensajes hoy"
+          value={metrics?.messagesToday ?? "—"}
           icon={Clock}
-          description="promedio"
+          description="recibidos + enviados"
         />
       </div>
 
@@ -54,21 +100,28 @@ export default function DashboardPage() {
           <div className="mt-4 flex h-48 items-center justify-center text-sm text-muted-foreground">
             <div className="text-center">
               <Zap className="mx-auto h-8 w-8 text-muted-foreground/50" />
-              <p className="mt-2">Sin datos aún</p>
-              <p className="text-xs">Los gráficos aparecerán cuando tengas conversaciones</p>
+              <p className="mt-2">Sin datos suficientes</p>
+              <p className="text-xs">Los gráficos aparecerán con más actividad</p>
             </div>
           </div>
         </div>
 
         <div className="rounded-xl border bg-card p-6">
           <h3 className="text-sm font-semibold text-foreground">
-            Rendimiento de agentes
+            Resumen
           </h3>
-          <div className="mt-4 flex h-48 items-center justify-center text-sm text-muted-foreground">
-            <div className="text-center">
-              <Users className="mx-auto h-8 w-8 text-muted-foreground/50" />
-              <p className="mt-2">Sin datos aún</p>
-              <p className="text-xs">Conecta WhatsApp para comenzar</p>
+          <div className="mt-4 space-y-3">
+            <div className="flex items-center justify-between rounded-lg bg-muted/50 px-4 py-3">
+              <span className="text-sm">Total de leads</span>
+              <span className="text-sm font-semibold">{metrics?.totalLeads ?? "—"}</span>
+            </div>
+            <div className="flex items-center justify-between rounded-lg bg-muted/50 px-4 py-3">
+              <span className="text-sm">Mensajes hoy</span>
+              <span className="text-sm font-semibold">{metrics?.messagesToday ?? "—"}</span>
+            </div>
+            <div className="flex items-center justify-between rounded-lg bg-muted/50 px-4 py-3">
+              <span className="text-sm">Score promedio</span>
+              <span className="text-sm font-semibold">{metrics?.avgScore ?? "—"}</span>
             </div>
           </div>
         </div>

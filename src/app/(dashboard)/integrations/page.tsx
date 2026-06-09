@@ -1,33 +1,34 @@
-import { Plug, MessageCircle, Bot, ShoppingBag, HardDrive } from "lucide-react";
+import Link from "next/link";
+import { MessageCircle, Bot, ShoppingBag, HardDrive, ArrowRight } from "lucide-react";
 
 const integrations = [
   {
     name: "WhatsApp Business",
     description: "Conecta tu número de WhatsApp Business",
     icon: MessageCircle,
-    href: "/settings/whatsapp",
     color: "#25D366",
+    tab: "whatsapp",
   },
   {
     name: "Proveedor IA",
     description: "OpenRouter, OpenAI o Anthropic",
     icon: Bot,
-    href: "/agents",
     color: "#0D9488",
+    tab: "ai-provider",
   },
   {
     name: "Dropi",
     description: "Sincroniza productos e inventario",
     icon: ShoppingBag,
-    href: "/inventory",
     color: "#F59E0B",
+    tab: "dropi",
   },
   {
     name: "Google Drive",
     description: "Importa documentos de conocimiento",
     icon: HardDrive,
-    href: "/settings",
     color: "#4285F4",
+    tab: "gdrive",
   },
 ];
 
@@ -37,19 +38,21 @@ export default function IntegrationsPage() {
       <div>
         <h1 className="text-2xl font-bold">Integraciones</h1>
         <p className="text-sm text-muted-foreground">
-          Conecta servicios externos para potenciar tu CRM
+          Conecta servicios externos para potenciar tu CRM. Configura cada integración desde{" "}
+          <Link href="/settings" className="text-primary hover:underline">Configuración</Link>.
         </p>
       </div>
 
       <div className="grid gap-4 sm:grid-cols-2">
         {integrations.map((integration) => (
-          <div
+          <Link
             key={integration.name}
-            className="rounded-xl border bg-card p-5 hover:shadow-md transition-shadow"
+            href={`/settings?tab=${integration.tab}`}
+            className="rounded-xl border bg-card p-5 hover:shadow-md transition-shadow group"
           >
             <div className="flex items-start gap-4">
               <div
-                className="flex h-11 w-11 items-center justify-center rounded-lg"
+                className="flex h-11 w-11 items-center justify-center rounded-lg shrink-0"
                 style={{ backgroundColor: `${integration.color}15` }}
               >
                 <integration.icon
@@ -58,16 +61,16 @@ export default function IntegrationsPage() {
                 />
               </div>
               <div className="flex-1">
-                <h3 className="text-sm font-semibold">{integration.name}</h3>
+                <div className="flex items-center justify-between">
+                  <h3 className="text-sm font-semibold">{integration.name}</h3>
+                  <ArrowRight className="h-4 w-4 text-muted-foreground opacity-0 group-hover:opacity-100 transition-opacity" />
+                </div>
                 <p className="mt-0.5 text-xs text-muted-foreground">
                   {integration.description}
                 </p>
-                <span className="mt-2 inline-flex items-center rounded-full bg-muted px-2 py-0.5 text-[10px] font-medium text-muted-foreground">
-                  No conectado
-                </span>
               </div>
             </div>
-          </div>
+          </Link>
         ))}
       </div>
     </div>

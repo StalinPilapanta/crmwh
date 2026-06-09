@@ -11,7 +11,6 @@ import {
   Bot,
   Package,
   Settings,
-  Plug,
 } from "lucide-react";
 import { UserMenu } from "./user-menu";
 
@@ -22,7 +21,6 @@ const navItems = [
   { href: "/pipeline", icon: Kanban, label: "Pipeline" },
   { href: "/agents", icon: Bot, label: "Agentes IA" },
   { href: "/inventory", icon: Package, label: "Inventario" },
-  { href: "/integrations", icon: Plug, label: "Integraciones" },
   { href: "/settings", icon: Settings, label: "Configuración" },
 ];
 
