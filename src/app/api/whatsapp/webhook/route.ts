@@ -41,7 +41,9 @@ export async function POST(request: NextRequest) {
   // Process async to avoid timeout
   try {
     const payload: WebhookPayload = JSON.parse(body);
+    console.log("Webhook payload received:", JSON.stringify(payload).slice(0, 500));
     await processWebhook(payload);
+    console.log("Webhook processed successfully");
   } catch (error) {
     console.error("Webhook processing error:", error);
     // Still return 200 to prevent retries
@@ -59,12 +61,14 @@ async function processWebhook(payload: WebhookPayload) {
       const phoneNumberId = metadata.phone_number_id;
 
       // Find the WhatsApp session by phone_number_id
-      const { data: session } = await supabase
+      const { data: session, error: sessionError } = await supabase
         .from("whatsapp_sessions")
         .select("*")
         .eq("phone_number_id", phoneNumberId)
         .eq("status", "active")
         .single();
+
+      console.log("Session lookup:", { phoneNumberId, found: !!session, error: sessionError?.message });
 
       if (!session) continue;
 
