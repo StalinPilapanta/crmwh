@@ -2,19 +2,19 @@
   "crons": [
     {
       "path": "/api/cron/followup",
-      "schedule": "*/5 * * * *"
+      "schedule": "0 8 * * *"
     },
     {
       "path": "/api/cron/dropi-sync",
-      "schedule": "*/30 * * * *"
+      "schedule": "0 6 * * *"
     },
     {
       "path": "/api/cron/gdrive-sync",
-      "schedule": "0 * * * *"
+      "schedule": "0 7 * * *"
     },
     {
       "path": "/api/cron/session-health",
-      "schedule": "*/2 * * * *"
+      "schedule": "0 9 * * *"
     }
   ]
 }
