@@ -119,6 +119,7 @@ npm run dev
 - **Handoff inteligente**: Detección de intención de hablar con humano + timeout automático
 - **Pipeline de ventas**: Kanban drag & drop con etapas configurables
 - **Lead scoring**: Scoring automático basado en comportamiento
+- 
 - **Follow-up automático**: Secuencias programables con horario laboral
 - **Inventario Dropi**: Sincronización de productos y creación de órdenes
 - **Tiempo real**: Actualizaciones instantáneas via Supabase Realtime
