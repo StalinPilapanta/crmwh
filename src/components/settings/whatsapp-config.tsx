@@ -1,8 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useEffect, useState, useCallback } from "react";
 import { createClient } from "@/lib/supabase/client";
-import { Wifi, WifiOff, Trash2, Plus } from "lucide-react";
+import { Wifi, WifiOff, Trash2, MessageCircle } from "lucide-react";
 
 interface Session {
   id: string;
@@ -12,16 +12,35 @@ interface Session {
   created_at: string;
 }
 
+declare global {
+  interface Window {
+    fbAsyncInit: () => void;
+    FB: {
+      init: (params: { appId: string; autoLogAppEvents: boolean; xfbml: boolean; version: string }) => void;
+      login: (callback: (response: FBLoginResponse) => void, params: { config_id: string; response_type: string; override_default_response_type: boolean; extras: { setup: object; featureType: string; sessionInfoVersion: string } }) => void;
+    };
+    launchWhatsAppSignup: () => void;
+  }
+}
+
+interface FBLoginResponse {
+  authResponse?: {
+    code: string;
+    accessToken?: string;
+  };
+  status: string;
+}
+
 export function WhatsAppConfig() {
   const [sessions, setSessions] = useState<Session[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ phoneNumberId: "", displayPhone: "", businessAccountId: "", accessToken: "" });
-  const [saving, setSaving] = useState(false);
+  const [connecting, setConnecting] = useState(false);
   const [error, setError] = useState("");
+  const [sdkLoaded, setSdkLoaded] = useState(false);
 
   useEffect(() => {
     fetchSessions();
+    loadFacebookSDK();
   }, []);
 
   async function fetchSessions() {
@@ -34,29 +53,85 @@ export function WhatsAppConfig() {
     setLoading(false);
   }
 
-  async function handleCreate() {
-    if (!form.phoneNumberId || !form.displayPhone || !form.businessAccountId || !form.accessToken) {
-      setError("Todos los campos son requeridos");
+  function loadFacebookSDK() {
+    // Check if already loaded
+    if (window.FB) {
+      setSdkLoaded(true);
       return;
     }
-    setSaving(true);
+
+    window.fbAsyncInit = function () {
+      window.FB.init({
+        appId: process.env.NEXT_PUBLIC_FB_APP_ID || "",
+        autoLogAppEvents: true,
+        xfbml: true,
+        version: "v21.0",
+      });
+      setSdkLoaded(true);
+    };
+
+    // Load SDK script
+    const script = document.createElement("script");
+    script.src = "https://connect.facebook.net/en_US/sdk.js";
+    script.async = true;
+    script.defer = true;
+    script.crossOrigin = "anonymous";
+    document.body.appendChild(script);
+  }
+
+  const launchEmbeddedSignup = useCallback(() => {
+    if (!window.FB) {
+      setError("Facebook SDK no cargado. Recarga la página.");
+      return;
+    }
+
+    setConnecting(true);
     setError("");
 
-    const res = await fetch("/api/whatsapp/sessions", {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(form),
-    });
+    window.FB.login(
+      function (response: FBLoginResponse) {
+        if (response.authResponse?.code) {
+          // Send the code to our backend to exchange for tokens
+          exchangeCode(response.authResponse.code);
+        } else {
+          setConnecting(false);
+          setError("Conexión cancelada o fallida");
+        }
+      },
+      {
+        config_id: process.env.NEXT_PUBLIC_FB_CONFIG_ID || "",
+        response_type: "code",
+        override_default_response_type: true,
+        extras: {
+          setup: {},
+          featureType: "",
+          sessionInfoVersion: "3",
+        },
+      }
+    );
+  }, []);
 
-    if (res.ok) {
-      setShowForm(false);
-      setForm({ phoneNumberId: "", displayPhone: "", businessAccountId: "", accessToken: "" });
-      fetchSessions();
-    } else {
-      const data = await res.json();
-      setError(data.error || "Error al conectar");
+  async function exchangeCode(code: string) {
+    try {
+      const res = await fetch("/api/whatsapp/embedded-signup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code }),
+      });
+
+      if (res.ok) {
+        const { session } = await res.json();
+        setSessions((prev) => [session, ...prev]);
+        setConnecting(false);
+      } else {
+        const data = await res.json();
+        setError(data.error || "Error al conectar WhatsApp");
+        setConnecting(false);
+      }
+    } catch {
+      setError("Error de red al conectar");
+      setConnecting(false);
     }
-    setSaving(false);
   }
 
   async function handleDelete(id: string) {
@@ -71,56 +146,30 @@ export function WhatsAppConfig() {
       <div className="flex items-center justify-between">
         <h3 className="text-base font-semibold">WhatsApp Business</h3>
         <button
-          onClick={() => setShowForm(!showForm)}
-          className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-primary-foreground hover:bg-primary/90"
+          onClick={launchEmbeddedSignup}
+          disabled={connecting || !sdkLoaded}
+          className="inline-flex items-center gap-2 rounded-md bg-[#25D366] px-4 py-2 text-sm font-medium text-white hover:bg-[#20bd5a] disabled:opacity-50"
         >
-          <Plus className="h-3.5 w-3.5" />
-          Conectar número
+          <MessageCircle className="h-4 w-4" />
+          {connecting ? "Conectando..." : "Conectar WhatsApp"}
         </button>
       </div>
 
-      {showForm && (
-        <div className="space-y-3 rounded-lg border p-4">
-          <p className="text-sm text-muted-foreground">Ingresa los datos de tu WhatsApp Business API (Meta Cloud)</p>
-          {error && <p className="text-sm text-destructive">{error}</p>}
-          <input
-            placeholder="Phone Number ID"
-            value={form.phoneNumberId}
-            onChange={(e) => setForm({ ...form, phoneNumberId: e.target.value })}
-            className="w-full rounded-md border px-3 py-2 text-sm"
-          />
-          <input
-            placeholder="Número a mostrar (ej: +57 300 123 4567)"
-            value={form.displayPhone}
-            onChange={(e) => setForm({ ...form, displayPhone: e.target.value })}
-            className="w-full rounded-md border px-3 py-2 text-sm"
-          />
-          <input
-            placeholder="Business Account ID"
-            value={form.businessAccountId}
-            onChange={(e) => setForm({ ...form, businessAccountId: e.target.value })}
-            className="w-full rounded-md border px-3 py-2 text-sm"
-          />
-          <input
-            placeholder="Access Token (permanente)"
-            type="password"
-            value={form.accessToken}
-            onChange={(e) => setForm({ ...form, accessToken: e.target.value })}
-            className="w-full rounded-md border px-3 py-2 text-sm"
-          />
-          <div className="flex gap-2">
-            <button onClick={handleCreate} disabled={saving} className="rounded-md bg-primary px-4 py-2 text-sm text-primary-foreground hover:bg-primary/90 disabled:opacity-50">
-              {saving ? "Conectando..." : "Conectar"}
-            </button>
-            <button onClick={() => setShowForm(false)} className="rounded-md border px-4 py-2 text-sm hover:bg-muted">
-              Cancelar
-            </button>
-          </div>
-        </div>
+      <p className="text-sm text-muted-foreground">
+        Haz clic en "Conectar WhatsApp" para vincular tu número de WhatsApp Business. 
+        Se abrirá una ventana de Meta donde podrás autorizar tu cuenta.
+      </p>
+
+      {error && (
+        <p className="text-sm text-destructive rounded-md bg-destructive/10 px-3 py-2">{error}</p>
       )}
 
-      {sessions.length === 0 && !showForm ? (
-        <p className="text-sm text-muted-foreground py-4">No hay números conectados. Haz clic en "Conectar número" para configurar.</p>
+      {sessions.length === 0 ? (
+        <div className="rounded-lg border border-dashed p-6 text-center">
+          <MessageCircle className="mx-auto h-8 w-8 text-muted-foreground/50" />
+          <p className="mt-2 text-sm text-muted-foreground">No hay números conectados</p>
+          <p className="text-xs text-muted-foreground">Conecta tu número de WhatsApp Business para empezar a recibir mensajes</p>
+        </div>
       ) : (
         <div className="space-y-2">
           {sessions.map((session) => (

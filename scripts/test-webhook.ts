@@ -6,7 +6,7 @@
 import { createHmac } from "crypto";
 
 const WEBHOOK_URL = "https://crmwh.vercel.app/api/whatsapp/webhook";
-const APP_SECRET = "xxx"; // Mismo valor que WHATSAPP_APP_SECRET en .env.local
+const APP_SECRET = "XX"; // Mismo valor que WHATSAPP_APP_SECRET en .env.local
 
 const payload = {
   object: "whatsapp_business_account",
@@ -24,12 +24,12 @@ const payload = {
             contacts: [
               {
                 profile: { name: "Test" },
-                wa_id: "593995276111",
+                wa_id: "593983384935",
               },
             ],
             messages: [
               {
-                from: "593995276111",
+                from: "593983384935",
                 id: "wamid.test123",
                 timestamp: String(Math.floor(Date.now() / 1000)),
                 type: "text",
@@ -52,7 +52,7 @@ async function main() {
 
   console.log("Sending test webhook to:", WEBHOOK_URL);
   console.log("Phone Number ID:", "1201335609722299");
-  console.log("From:", "593995276111");
+  console.log("From:", "593983384935");
   console.log("Message:", "Hola, quiero información sobre sus productos");
   console.log("---");
 
