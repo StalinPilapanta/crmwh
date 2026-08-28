@@ -81,6 +81,12 @@ describe("sandbox del Laboratorio en el pipeline del agente", () => {
     selectQueue.length = 0;
     inserts.length = 0;
     vi.stubEnv("OPENROUTER_API_TOKEN", "token-test");
+    // getEnv() se valida al armar el turno; provee las requeridas mínimas.
+    vi.stubEnv("APP_BASE_URL", "http://localhost:3000");
+    vi.stubEnv("DATABASE_URL", "postgresql://t:t@localhost:5432/t");
+    vi.stubEnv("BETTER_AUTH_SECRET", "test-secret-1234567890");
+    vi.stubEnv("ENCRYPTION_KEY", Buffer.alloc(32).toString("base64"));
+    vi.stubEnv("META_WEBHOOK_VERIFY_TOKEN", "verify-token-test");
   });
 
   it("turno sobre conversación is_test → persiste la respuesta y NO llama a Graph", async () => {

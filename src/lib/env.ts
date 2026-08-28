@@ -26,6 +26,21 @@ const envSchema = z.object({
   OPENROUTER_BASE_URL: z.string().url().default("https://openrouter.ai/api"),
   OPENROUTER_MODEL: z.string().optional(),
   OPENROUTER_JUDGE_MODEL: z.string().optional(),
+  // IA multimedia (OpenAI): STT (Whisper), visión (gpt-4o) y TTS (voz).
+  // Sin OPENAI_API_KEY, el agente procesa solo texto como hasta ahora.
+  OPENAI_API_KEY: z.string().optional(),
+  OPENAI_BASE_URL: z.string().url().default("https://api.openai.com"),
+  OPENAI_STT_MODEL: z.string().default("whisper-1"),
+  OPENAI_VISION_MODEL: z.string().default("gpt-4o-mini"),
+  OPENAI_TTS_MODEL: z.string().default("tts-1"),
+  OPENAI_TTS_VOICE: z.string().default("nova"),
+  // Política de respuesta por voz: off | mirror | always (default mirror:
+  // responde en voz solo si el cliente escribió por voz).
+  AGENT_VOICE_REPLY: z
+    .enum(["off", "mirror", "always"])
+    .default("mirror"),
+  // Tope de tamaño (bytes) para transcribir audio entrante (default 16 MB).
+  MEDIA_STT_MAX_BYTES: z.coerce.number().int().min(0).default(16_000_000),
   ALLOW_SIGNUP: z.string().optional(),
   AGENT_COALESCE_MS: z.coerce.number().int().min(0).default(6000),
   WA_MOCK_ENABLED: z.string().optional(),
@@ -91,4 +106,11 @@ export function isMockEnabled(): boolean {
 export function isAiConfigured(): boolean {
   const token = process.env.OPENROUTER_API_TOKEN;
   return typeof token === "string" && token.trim().length > 0;
+}
+
+/** true si hay proveedor de IA multimedia (OpenAI) configurado. Activa STT,
+ * visión y TTS; sin él, el agente procesa solo texto. */
+export function isMediaAiConfigured(): boolean {
+  const key = process.env.OPENAI_API_KEY;
+  return typeof key === "string" && key.trim().length > 0;
 }

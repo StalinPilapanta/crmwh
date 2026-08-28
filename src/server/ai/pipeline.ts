@@ -1,16 +1,18 @@
-import { asc, desc, eq } from "drizzle-orm";
+import { asc, desc, eq, inArray } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
 import { scoped } from "@/lib/db/tenant";
 import { moveLeadToStage as moveLeadThroughHistory } from "@/server/leads/stage-history";
-import { getEnv, isAiConfigured } from "@/lib/env";
+import { getEnv, isAiConfigured, isMediaAiConfigured } from "@/lib/env";
 import { chatJson, type ChatMessage } from "@/lib/ai";
+import { synthesizeSpeech } from "@/lib/ai/openai-media";
 import { publish } from "@/server/events/bus";
 import { isWindowOpen } from "@/server/inbox/window";
-import { SendError, sendText } from "@/server/inbox/send";
+import { SendError, sendMediaMessage, sendText } from "@/server/inbox/send";
 import { AgentAction, degradeAction, resolveStage, type AgentActionType } from "@/server/ai/actions";
 import { matchesHandoffIntent } from "@/server/ai/handoff";
 import { buildAgentSystemPrompt } from "@/server/ai/prompts";
+import { resolveInboundContent } from "@/server/ai/resolve-content";
 
 /**
  * Turno del agente (FR-021..FR-025).
@@ -127,9 +129,60 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
     return;
   }
 
+  // Resolver el contenido textual de cada mensaje (texto directo, o
+  // transcripción de audio / descripción de imagen vía IA multimedia). Se
+  // cargan los media assets referenciados en un solo query y se resuelven en
+  // paralelo; los que no producen texto se omiten del prompt.
+  const assetIds = history
+    .map((m) => m.mediaAssetId)
+    .filter((id): id is string => Boolean(id));
+  const assetsById = new Map<string, typeof schema.mediaAsset.$inferSelect>();
+  if (assetIds.length > 0) {
+    const assets = await db
+      .select()
+      .from(schema.mediaAsset)
+      .where(inArray(schema.mediaAsset.id, assetIds));
+    for (const a of assets) assetsById.set(a.id, a);
+  }
+
+  const resolved = await Promise.all(
+    history.map(async (m) => ({
+      direction: m.direction,
+      text: await resolveInboundContent(
+        m,
+        m.mediaAssetId ? assetsById.get(m.mediaAssetId) ?? null : null
+      ),
+    }))
+  );
+
+  // Texto resuelto del último mensaje entrante (para el patrón de respaldo).
+  const lastInboundText = [...resolved]
+    .reverse()
+    .find((r) => r.direction === "in")?.text;
+
   // Patrón de respaldo ANTES del LLM (FR-022).
-  if (lastInbound.text && matchesHandoffIntent(lastInbound.text)) {
+  if (lastInboundText && matchesHandoffIntent(lastInboundText)) {
     await applyHandoff(conversationId, organizationId, "cliente");
+    return;
+  }
+
+  // Política de respuesta por voz: en 'mirror' responde en voz solo si el
+  // cliente escribió por voz; 'always' siempre; 'off' nunca.
+  const voiceReply = getEnv().AGENT_VOICE_REPLY;
+  const replyWithVoice =
+    isMediaAiConfigured() &&
+    (voiceReply === "always" ||
+      (voiceReply === "mirror" && lastInbound.type === "audio"));
+
+  // El último mensaje entrante era media (audio/imagen) pero no se pudo
+  // resolver a texto (STT/visión falló o no está configurado). Responder con
+  // cortesía en vez de dejar al cliente sin contestación.
+  if (!lastInboundText && lastInbound.type !== "text") {
+    const courtesy =
+      lastInbound.type === "audio"
+        ? "Disculpa, no pude escuchar bien tu audio. ¿Me lo puedes escribir?"
+        : "Disculpa, no pude ver bien la imagen. ¿Me cuentas en qué te ayudo?";
+    await deliverReply(conversation, courtesy, replyWithVoice);
     return;
   }
 
@@ -149,7 +202,7 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
       role: "system",
       content: buildAgentSystemPrompt({ profile, kb, stages }),
     },
-    ...history
+    ...resolved
       .filter((m) => m.text)
       .map((m) => ({
         role: m.direction === "in" ? ("user" as const) : ("assistant" as const),
@@ -179,7 +232,7 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
         data: { conversation: { id: conversationId } },
       });
       if (action.reply) {
-        await deliverReply(conversation, action.reply);
+        await deliverReply(conversation, action.reply, replyWithVoice);
       }
       return;
     }
@@ -189,16 +242,16 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
     case "none":
       return;
     case "reply":
-      await deliverReply(conversation, action.text);
+      await deliverReply(conversation, action.text, replyWithVoice);
       return;
     case "update_lead": {
       await appendLeadNote(organizationId, conversation.contactId, action.note);
-      if (action.reply) await deliverReply(conversation, action.reply);
+      if (action.reply) await deliverReply(conversation, action.reply, replyWithVoice);
       return;
     }
     case "handoff": {
       if (action.farewell) {
-        await deliverReply(conversation, action.farewell);
+        await deliverReply(conversation, action.farewell, replyWithVoice);
       }
       await applyHandoff(conversationId, organizationId, "modelo");
       return;
@@ -208,14 +261,55 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
 
 type Conversation = typeof schema.conversation.$inferSelect;
 
-/** Entrega la respuesta: envío real o persistencia sandbox (is_test). */
+/**
+ * Entrega la respuesta: envío real o persistencia sandbox (is_test).
+ * Si `voice` es true, sintetiza el texto a nota de voz (TTS) y la envía como
+ * audio; si el TTS falla, degrada a texto para no dejar al cliente sin
+ * respuesta. El sandbox JAMÁS toca la API real ni OpenAI.
+ */
 async function deliverReply(
   conversation: Conversation,
-  text: string
+  text: string,
+  voice = false
 ): Promise<void> {
   if (conversation.isTest) {
     await persistTestOutbound(conversation, text);
     return;
+  }
+  if (voice) {
+    const speech = await synthesizeSpeech(text);
+    if (speech.ok) {
+      try {
+        await sendMediaMessage({
+          conversationId: conversation.id,
+          organizationId: conversation.organizationId,
+          file: {
+            data: speech.data,
+            mimeType: speech.mimeType,
+            fileName: "respuesta.ogg",
+          },
+        });
+        return;
+      } catch (err) {
+        if (err instanceof SendError && err.code === "window_closed") {
+          await applyHandoff(
+            conversation.id,
+            conversation.organizationId,
+            "ventana"
+          );
+          return;
+        }
+        // Otro fallo al enviar audio → degradar a texto abajo.
+        console.error(
+          `[agente] envío de audio falló, degradando a texto: ${
+            err instanceof Error ? err.message : String(err)
+          }`
+        );
+      }
+    } else {
+      console.error(`[agente] TTS falló, degradando a texto: ${speech.error}`);
+    }
+    // Degradación: continúa a enviar texto.
   }
   try {
     await sendText({

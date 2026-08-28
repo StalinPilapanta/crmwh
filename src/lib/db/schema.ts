@@ -424,6 +424,9 @@ export const mediaAsset = pgTable(
       .notNull()
       .default("pending"),
     fetchError: text("fetch_error"),
+    /** Transcripción (audio→texto vía STT) o descripción (imagen→texto vía
+     * visión). NULL hasta procesar; si no es NULL, no se reprocesa. */
+    transcript: text("transcript"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
