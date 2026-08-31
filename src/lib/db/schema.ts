@@ -507,6 +507,37 @@ export const kbEntry = pgTable(
   (t) => [index("kb_org_idx").on(t.organizationId)]
 );
 
+/**
+ * Imágenes asociadas a un bloque de la KB (ficha de producto). El agente las
+ * puede enviar por WhatsApp. `shortId` es un identificador corto y legible que
+ * el modelo usa en la acción send_media (se resuelve server-side).
+ */
+export const kbEntryMedia = pgTable(
+  "kb_entry_media",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    kbEntryId: text("kb_entry_id")
+      .notNull()
+      .references(() => kbEntry.id, { onDelete: "cascade" }),
+    mediaAssetId: text("media_asset_id")
+      .notNull()
+      .references(() => mediaAsset.id, { onDelete: "cascade" }),
+    shortId: text("short_id").notNull(),
+    position: integer("position").notNull().default(0),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("kb_media_org_idx").on(t.organizationId),
+    index("kb_media_entry_idx").on(t.kbEntryId),
+    uniqueIndex("kb_media_entry_asset_uq").on(t.kbEntryId, t.mediaAssetId),
+    uniqueIndex("kb_media_short_id_uq").on(t.organizationId, t.shortId),
+  ]
+);
+
 export const template = pgTable(
   "template",
   {

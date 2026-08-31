@@ -6,14 +6,24 @@ type KbEntry = typeof schema.kbEntry.$inferSelect;
 /** Marcador del prompt del juez: el ai-mock lo usa para despachar veredictos. */
 export const JUDGE_MARKER = "[JUEZ]";
 
-export function renderKb(entries: KbEntry[]): string {
+/** Imágenes de un bloque de KB, para exponer sus shortId al agente. */
+export type KbEntryImage = { shortId: string };
+
+export function renderKb(
+  entries: KbEntry[],
+  imagesByEntry?: Map<string, KbEntryImage[]>
+): string {
   if (entries.length === 0) return "(knowledge base vacío)";
   return entries
-    .map((e) =>
-      e.kind === "qa"
-        ? `P: ${e.question}\nR: ${e.answer}`
-        : (e.content ?? "")
-    )
+    .map((e) => {
+      const base =
+        e.kind === "qa" ? `P: ${e.question}\nR: ${e.answer}` : (e.content ?? "");
+      if (!base) return "";
+      const imgs = imagesByEntry?.get(e.id) ?? [];
+      if (imgs.length === 0) return base;
+      const ids = imgs.map((i) => i.shortId).join(", ");
+      return `${base}\n[imágenes disponibles: ${ids}]`;
+    })
     .filter(Boolean)
     .join("\n\n");
 }
@@ -26,9 +36,11 @@ export function buildAgentSystemPrompt(input: {
   profile: AgentProfile;
   kb: KbEntry[];
   stages: { name: string }[];
+  kbImages?: Map<string, KbEntryImage[]>;
 }): string {
   const { profile } = input;
   const stageNames = input.stages.map((s) => s.name).join(" | ");
+  const hasImages = (input.kbImages?.size ?? 0) > 0;
   return [
     `Eres "${profile.name}", el asistente de WhatsApp de este negocio. Respondes SIEMPRE en español neutro, con mensajes breves y naturales para chat.`,
     profile.tone ? `Tono: ${profile.tone}` : null,
@@ -37,7 +49,7 @@ export function buildAgentSystemPrompt(input: {
       ? `Reglas de escalado a humano:\n${profile.escalationRules}`
       : null,
     profile.greeting ? `Saludo sugerido para conversaciones nuevas: ${profile.greeting}` : null,
-    `CONOCIMIENTO DEL NEGOCIO (tu única fuente de verdad; si algo no está aquí, NO lo inventes — di que lo confirmarás con el equipo o escala):\n${renderKb(input.kb)}`,
+    `CONOCIMIENTO DEL NEGOCIO (tu única fuente de verdad; si algo no está aquí, NO lo inventes — di que lo confirmarás con el equipo o escala):\n${renderKb(input.kb, input.kbImages)}`,
     `Etapas del pipeline disponibles: ${stageNames}`,
     [
       "En cada turno respondes ÚNICAMENTE un objeto JSON con UNA acción:",
@@ -46,12 +58,20 @@ export function buildAgentSystemPrompt(input: {
       '- {"action":"update_lead","note":"...","reply":"..."} — guardar una nota del lead (reply opcional).',
       '- {"action":"move_stage","stage":"<nombre exacto de etapa>","reply":"..."} — mover el lead (reply opcional).',
       '- {"action":"handoff","reason":"...","farewell":"..."} — escalar a un humano (farewell opcional para despedirte).',
+      hasImages
+        ? '- {"action":"send_media","mediaId":"<id de la imagen>","reply":"..."} — enviar una imagen del conocimiento (reply opcional para acompañarla).'
+        : null,
       "Reglas duras:",
       "- Si el cliente pide hablar con una persona/humano/asesor → handoff.",
       "- Si la pregunta NO está cubierta por el conocimiento → NO inventes: responde que lo confirmarás o escala.",
       "- Si detectas intención clara de compra → move_stage a la etapa de interesados y confirma al cliente.",
+      hasImages
+        ? "- Si el cliente pide ver una foto/imagen del producto y el bloque relevante tiene imágenes disponibles, usa send_media con ese id. Envía solo la imagen que corresponde y no repitas imágenes ya enviadas."
+        : null,
       "- JSON puro, sin markdown ni texto adicional.",
-    ].join("\n"),
+    ]
+      .filter(Boolean)
+      .join("\n"),
   ]
     .filter(Boolean)
     .join("\n\n");

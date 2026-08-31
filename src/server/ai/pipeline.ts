@@ -9,10 +9,12 @@ import { synthesizeSpeech } from "@/lib/ai/openai-media";
 import { publish } from "@/server/events/bus";
 import { isWindowOpen } from "@/server/inbox/window";
 import { SendError, sendMediaMessage, sendText } from "@/server/inbox/send";
-import { AgentAction, degradeAction, resolveStage, type AgentActionType } from "@/server/ai/actions";
+import { AgentAction, degradeAction, resolveKbMedia, resolveStage, type AgentActionType } from "@/server/ai/actions";
 import { matchesHandoffIntent } from "@/server/ai/handoff";
 import { buildAgentSystemPrompt } from "@/server/ai/prompts";
 import { resolveInboundContent } from "@/server/ai/resolve-content";
+import { kbImagesByEntry } from "@/server/kb/media";
+import { readMediaFile } from "@/server/whatsapp/media";
 
 /**
  * Turno del agente (FR-021..FR-025).
@@ -197,10 +199,24 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
     .where(eq(schema.pipelineStage.organizationId, organizationId))
     .orderBy(asc(schema.pipelineStage.position));
 
+  // Imágenes de KB de la org (para que el agente pueda enviarlas).
+  const kbImages = await kbImagesByEntry(organizationId);
+  const kbImagesForPrompt = new Map(
+    [...kbImages.entries()].map(([entryId, imgs]) => [
+      entryId,
+      imgs.map((i) => ({ shortId: i.shortId })),
+    ])
+  );
+
   const messages: ChatMessage[] = [
     {
       role: "system",
-      content: buildAgentSystemPrompt({ profile, kb, stages }),
+      content: buildAgentSystemPrompt({
+        profile,
+        kb,
+        stages,
+        kbImages: kbImagesForPrompt,
+      }),
     },
     ...resolved
       .filter((m) => m.text)
@@ -234,6 +250,24 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
       if (action.reply) {
         await deliverReply(conversation, action.reply, replyWithVoice);
       }
+      return;
+    }
+  }
+
+  if (action.action === "send_media") {
+    // Aplana las imágenes de la org y resuelve el shortId pedido.
+    const allImages = [...kbImages.values()]
+      .flat()
+      .map((i) => ({ shortId: i.shortId, assetId: i.assetId }));
+    const match = resolveKbMedia(action.mediaId, allImages);
+    if (!match) {
+      // Id inexistente → degradar a reply/none (nunca envía algo fuera de la org).
+      action = degradeAction(action);
+    } else {
+      if (action.reply) {
+        await deliverReply(conversation, action.reply, replyWithVoice);
+      }
+      await deliverImage(conversation, match.assetId);
       return;
     }
   }
@@ -324,6 +358,55 @@ async function deliverReply(
       return;
     }
     throw err;
+  }
+}
+
+/**
+ * Envía una imagen del conocimiento (KB) por WhatsApp. Lee el binario del disco
+ * y reutiliza sendMediaMessage. El sandbox (is_test) NO toca la API real; un
+ * fallo de envío se registra sin tumbar el turno; ventana cerrada → handoff.
+ */
+async function deliverImage(
+  conversation: Conversation,
+  assetId: string
+): Promise<void> {
+  if (conversation.isTest) {
+    await persistTestOutbound(conversation, "[imagen del catálogo]");
+    return;
+  }
+  const db = getDb();
+  const rows = await db
+    .select()
+    .from(schema.mediaAsset)
+    .where(eq(schema.mediaAsset.id, assetId))
+    .limit(1);
+  const asset = rows[0];
+  if (!asset || asset.organizationId !== conversation.organizationId) {
+    console.error(`[agente] imagen ${assetId} no encontrada para la org`);
+    return;
+  }
+  try {
+    const data = await readMediaFile(conversation.organizationId, assetId);
+    await sendMediaMessage({
+      conversationId: conversation.id,
+      organizationId: conversation.organizationId,
+      file: {
+        data,
+        mimeType: asset.mimeType ?? "image/jpeg",
+        fileName: asset.fileName ?? "imagen.jpg",
+      },
+    });
+  } catch (err) {
+    if (err instanceof SendError && err.code === "window_closed") {
+      await applyHandoff(conversation.id, conversation.organizationId, "ventana");
+      return;
+    }
+    // No tumbar el turno: la imagen no se envió, ya hubo (o no) un texto.
+    console.error(
+      `[agente] envío de imagen falló: ${
+        err instanceof Error ? err.message : String(err)
+      }`
+    );
   }
 }
 

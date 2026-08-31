@@ -78,6 +78,13 @@
       "when": 1788147178544,
       "tag": "0010_huge_argent",
       "breakpoints": true
+    },
+    {
+      "idx": 11,
+      "version": "7",
+      "when": 1788206616966,
+      "tag": "0011_little_caretaker",
+      "breakpoints": true
     }
   ]
 }

@@ -18,12 +18,15 @@ type Profile = {
   greeting: string | null;
 };
 
+type KbImage = { id: string; assetId: string; shortId: string; url: string };
+
 type KbEntry = {
   id: string;
   kind: "qa" | "block";
   question: string | null;
   answer: string | null;
   content: string | null;
+  images?: KbImage[];
 };
 
 export function AgentClient() {
@@ -202,6 +205,9 @@ function KbSection({
   const [question, setQuestion] = useState("");
   const [answer, setAnswer] = useState("");
   const [block, setBlock] = useState("");
+  const [blockImages, setBlockImages] = useState<File[]>([]);
+  const [uploading, setUploading] = useState(false);
+  const [uploadError, setUploadError] = useState<string | null>(null);
 
   async function addQa() {
     if (!question.trim() || !answer.trim()) return;
@@ -217,17 +223,59 @@ function KbSection({
 
   async function addBlock() {
     if (!block.trim()) return;
-    await fetch("/api/kb", {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify({ kind: "block", content: block }),
-    }).catch(() => null);
-    setBlock("");
-    onChanged();
+    setUploading(true);
+    setUploadError(null);
+    try {
+      const res = await fetch("/api/kb", {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ kind: "block", content: block }),
+      });
+      const data = res.ok ? await res.json() : null;
+      const entryId: string | undefined = data?.entry?.id;
+
+      // Sube las imágenes seleccionadas al bloque recién creado.
+      if (entryId && blockImages.length > 0) {
+        for (const file of blockImages) {
+          const form = new FormData();
+          form.append("file", file);
+          const up = await fetch(`/api/kb/${entryId}/media`, {
+            method: "POST",
+            body: form,
+          });
+          if (!up.ok) {
+            const err = await up.json().catch(() => null);
+            setUploadError(err?.message ?? "No se pudo subir una imagen");
+          }
+        }
+      }
+      setBlock("");
+      setBlockImages([]);
+      onChanged();
+    } finally {
+      setUploading(false);
+    }
+  }
+
+  function onPickImages(files: FileList | null) {
+    if (!files) return;
+    const picked = Array.from(files);
+    const valid = picked.filter((f) => /^image\/(jpeg|png|webp)$/.test(f.type));
+    if (valid.length !== picked.length) {
+      setUploadError("Solo se permiten imágenes JPG, PNG o WEBP");
+    }
+    setBlockImages((prev) => [...prev, ...valid]);
   }
 
   async function remove(id: string) {
     await fetch(`/api/kb/${id}`, { method: "DELETE" }).catch(() => null);
+    onChanged();
+  }
+
+  async function removeImage(entryId: string, imageId: string) {
+    await fetch(`/api/kb/${entryId}/media/${imageId}`, {
+      method: "DELETE",
+    }).catch(() => null);
     onChanged();
   }
 
@@ -281,13 +329,52 @@ function KbSection({
         <div className="space-y-2 rounded-md border p-3">
           <p className="text-sm font-medium">Nuevo bloque de texto libre</p>
           <Textarea
-            placeholder="Horarios, direcciones, políticas…"
+            placeholder="Horarios, direcciones, políticas, ficha de un producto…"
             rows={3}
             value={block}
             onChange={(e) => setBlock(e.target.value)}
           />
-          <Button size="sm" onClick={() => void addBlock()} disabled={!block.trim()}>
-            <Plus className="h-4 w-4" /> Agregar bloque
+          <div className="space-y-2">
+            <Label className="text-xs text-muted-foreground">
+              Imágenes del producto (opcional) — el agente podrá enviarlas
+            </Label>
+            <Input
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              multiple
+              onChange={(e) => onPickImages(e.target.files)}
+            />
+            {blockImages.length > 0 && (
+              <div className="flex flex-wrap gap-2">
+                {blockImages.map((f, i) => (
+                  <div
+                    key={i}
+                    className="flex items-center gap-1 rounded bg-muted px-2 py-1 text-xs"
+                  >
+                    <span className="max-w-[120px] truncate">{f.name}</span>
+                    <button
+                      type="button"
+                      aria-label="Quitar imagen"
+                      onClick={() =>
+                        setBlockImages((prev) => prev.filter((_, j) => j !== i))
+                      }
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+            {uploadError && (
+              <p className="text-xs text-destructive">{uploadError}</p>
+            )}
+          </div>
+          <Button
+            size="sm"
+            onClick={() => void addBlock()}
+            disabled={!block.trim() || uploading}
+          >
+            <Plus className="h-4 w-4" /> {uploading ? "Guardando…" : "Agregar bloque"}
           </Button>
         </div>
 
@@ -302,6 +389,28 @@ function KbSection({
                   </>
                 ) : (
                   <p className="whitespace-pre-wrap text-muted-foreground">{e.content}</p>
+                )}
+                {e.images && e.images.length > 0 && (
+                  <div className="mt-2 flex flex-wrap gap-2">
+                    {e.images.map((img) => (
+                      <div key={img.id} className="group relative">
+                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                        <img
+                          src={img.url}
+                          alt="Imagen del producto"
+                          className="h-16 w-16 rounded object-cover"
+                        />
+                        <button
+                          type="button"
+                          aria-label="Quitar imagen"
+                          className="absolute -right-1 -top-1 rounded-full bg-destructive p-0.5 text-white opacity-0 transition-opacity group-hover:opacity-100"
+                          onClick={() => void removeImage(e.id, img.id)}
+                        >
+                          <Trash2 className="h-3 w-3" />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
                 )}
               </div>
               <Button

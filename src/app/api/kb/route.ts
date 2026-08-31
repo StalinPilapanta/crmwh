@@ -4,6 +4,7 @@ import { apiError, parseBody, withAuth } from "@/lib/api";
 import { getDb, schema } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
 import { scoped } from "@/lib/db/tenant";
+import { kbImagesByEntry } from "@/server/kb/media";
 
 export const dynamic = "force-dynamic";
 
@@ -14,7 +15,12 @@ export const GET = withAuth(async (session) => {
     .from(schema.kbEntry)
     .where(scoped(schema.kbEntry.organizationId, session.organizationId))
     .orderBy(asc(schema.kbEntry.createdAt));
-  return Response.json({ entries });
+  const imagesByEntry = await kbImagesByEntry(session.organizationId);
+  const withImages = entries.map((e) => ({
+    ...e,
+    images: imagesByEntry.get(e.id) ?? [],
+  }));
+  return Response.json({ entries: withImages });
 });
 
 const createSchema = z
