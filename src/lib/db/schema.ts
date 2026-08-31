@@ -324,6 +324,11 @@ export const conversation = pgTable(
     lastInboundAt: timestamp("last_inbound_at"),
     lastMessageAt: timestamp("last_message_at"),
     unreadCount: integer("unread_count").notNull().default(0),
+    /** Estado del seguimiento automático: 0=sin recordatorio, 1=recordatorio
+     * enviado. (Se reserva 2 para el futuro toque de 3 días.) Se resetea a 0
+     * cuando el cliente responde. */
+    followupStage: integer("followup_stage").notNull().default(0),
+    followupLastAt: timestamp("followup_last_at"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
@@ -476,6 +481,9 @@ export const agentProfile = pgTable(
     instructions: text("instructions"),
     escalationRules: text("escalation_rules"),
     greeting: text("greeting"),
+    /** Seguimiento automático de leads (re-enganche). */
+    followupEnabled: boolean("followup_enabled").notNull().default(false),
+    followupReminderText: text("followup_reminder_text"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },

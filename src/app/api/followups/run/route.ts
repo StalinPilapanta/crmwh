@@ -1,0 +1,38 @@
+import { getEnv, isFollowupCronConfigured } from "@/lib/env";
+import { runFollowups } from "@/server/followups/run";
+
+export const dynamic = "force-dynamic";
+
+/**
+ * Barrido de seguimiento automático de leads. Lo dispara un cron externo
+ * (Coolify) con `Authorization: Bearer FOLLOWUP_CRON_KEY`. Sin la clave
+ * configurada o con clave incorrecta responde 401 sin ejecutar nada.
+ */
+export async function POST(req: Request): Promise<Response> {
+  if (!isFollowupCronConfigured()) {
+    return json(401, { ok: false, error: "not_configured" });
+  }
+  const expected = getEnv().FOLLOWUP_CRON_KEY;
+  const auth = req.headers.get("authorization") ?? "";
+  const token = auth.startsWith("Bearer ") ? auth.slice(7).trim() : "";
+  if (!expected || token !== expected) {
+    return json(401, { ok: false, error: "unauthorized" });
+  }
+
+  try {
+    const summary = await runFollowups();
+    return json(200, { ok: true, summary });
+  } catch (err) {
+    console.error(
+      `[followups] barrido falló: ${err instanceof Error ? err.message : String(err)}`
+    );
+    return json(500, { ok: false, error: "internal_error" });
+  }
+}
+
+function json(status: number, body: unknown): Response {
+  return new Response(JSON.stringify(body), {
+    status,
+    headers: { "content-type": "application/json" },
+  });
+}

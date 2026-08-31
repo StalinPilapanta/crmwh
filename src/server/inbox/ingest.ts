@@ -407,6 +407,10 @@ export async function ingestInboundMessage(input: {
       lastInboundAt: waTimestamp,
       lastMessageAt: waTimestamp,
       unreadCount: sql`${schema.conversation.unreadCount} + 1`,
+      // El cliente respondió: reinicia el ciclo de seguimiento para que pueda
+      // recibir un nuevo recordatorio si vuelve a quedar inactivo.
+      followupStage: 0,
+      followupLastAt: null,
       updatedAt: new Date(),
     })
     .where(eq(schema.conversation.id, conversation.id));

@@ -41,6 +41,11 @@ const envSchema = z.object({
     .default("mirror"),
   // Tope de tamaño (bytes) para transcribir audio entrante (default 16 MB).
   MEDIA_STT_MAX_BYTES: z.coerce.number().int().min(0).default(16_000_000),
+  // Seguimiento automático de leads (re-enganche). Sin FOLLOWUP_CRON_KEY el
+  // endpoint del barrido responde 401 y la feature queda inactiva.
+  FOLLOWUP_CRON_KEY: z.string().optional(),
+  FOLLOWUP_REMINDER_AFTER_H: z.coerce.number().min(0).default(20),
+  FOLLOWUP_BATCH_LIMIT: z.coerce.number().int().min(1).default(200),
   ALLOW_SIGNUP: z.string().optional(),
   AGENT_COALESCE_MS: z.coerce.number().int().min(0).default(6000),
   WA_MOCK_ENABLED: z.string().optional(),
@@ -112,5 +117,12 @@ export function isAiConfigured(): boolean {
  * visión y TTS; sin él, el agente procesa solo texto. */
 export function isMediaAiConfigured(): boolean {
   const key = process.env.OPENAI_API_KEY;
+  return typeof key === "string" && key.trim().length > 0;
+}
+
+/** true si el disparo del barrido de seguimiento está habilitado (hay clave de
+ * cron). Sin ella, el endpoint /api/followups/run responde 401. */
+export function isFollowupCronConfigured(): boolean {
+  const key = process.env.FOLLOWUP_CRON_KEY;
   return typeof key === "string" && key.trim().length > 0;
 }
