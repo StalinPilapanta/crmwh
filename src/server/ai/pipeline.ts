@@ -1,4 +1,4 @@
-import { asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray } from "drizzle-orm";
 import { getDb, schema } from "@/lib/db";
 import { newId } from "@/lib/db/ids";
 import { scoped } from "@/lib/db/tenant";
@@ -15,6 +15,10 @@ import { buildAgentSystemPrompt } from "@/server/ai/prompts";
 import { resolveInboundContent } from "@/server/ai/resolve-content";
 import { kbImagesByEntry } from "@/server/kb/media";
 import { readMediaFile } from "@/server/whatsapp/media";
+import { upsertFicha } from "@/server/bot/ficha";
+import { getBranding } from "@/server/branding";
+import { listProvincias, normalizeCiudad, normalizeProvincia } from "@/lib/geo";
+import { LEAD_FIELDS } from "@/lib/lead-fields";
 
 /**
  * Turno del agente (FR-021..FR-025).
@@ -208,6 +212,11 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
     ])
   );
 
+  // País de operación → provincias válidas para capturar datos de entrega.
+  const branding = await getBranding(organizationId);
+  const country = branding.country;
+  const provincias = listProvincias(country);
+
   const messages: ChatMessage[] = [
     {
       role: "system",
@@ -216,6 +225,7 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
         kb,
         stages,
         kbImages: kbImagesForPrompt,
+        provincias,
       }),
     },
     ...resolved
@@ -280,6 +290,17 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
       return;
     case "update_lead": {
       await appendLeadNote(organizationId, conversation.contactId, action.note);
+      if (action.reply) await deliverReply(conversation, action.reply, replyWithVoice);
+      return;
+    }
+    case "update_ficha": {
+      await captureLeadFields(
+        organizationId,
+        conversationId,
+        conversation.contactId,
+        action.fields,
+        country
+      );
       if (action.reply) await deliverReply(conversation, action.reply, replyWithVoice);
       return;
     }
@@ -486,6 +507,79 @@ async function moveLeadToStage(
     // perdida, la puerta lo rechaza y el lead se queda donde está — mejor eso
     // que un motivo inventado.
   });
+}
+
+/**
+ * Guarda los datos de entrega capturados por el agente. name/phone → columnas
+ * de contact; provincia/ciudad se validan contra el catálogo del país (se
+ * omiten si no coinciden); direccion/referencia → ficha. Todo por la puerta
+ * única de ficha para consistencia. Nunca rompe el turno.
+ */
+async function captureLeadFields(
+  organizationId: string,
+  conversationId: string,
+  contactId: string,
+  fields: {
+    name?: string;
+    phone?: string;
+    provincia?: string;
+    ciudad?: string;
+    direccion?: string;
+    referencia?: string;
+  },
+  country: string
+): Promise<void> {
+  try {
+    const db = getDb();
+
+    // name / phone → columnas del contacto (scoped por org).
+    const contactPatch: { name?: string; phone?: string } = {};
+    if (fields.name) contactPatch.name = fields.name;
+    if (fields.phone) contactPatch.phone = fields.phone;
+    if (Object.keys(contactPatch).length > 0) {
+      await db
+        .update(schema.contact)
+        .set({ ...contactPatch, updatedAt: new Date() })
+        .where(
+          and(
+            eq(schema.contact.id, contactId),
+            eq(schema.contact.organizationId, organizationId)
+          )
+        );
+    }
+
+    // provincia / ciudad → validadas contra el catálogo del país.
+    const fichaPatch: Record<string, string> = {};
+    let provinciaCanonica: string | null = null;
+    if (fields.provincia) {
+      provinciaCanonica = normalizeProvincia(country, fields.provincia);
+      if (provinciaCanonica) fichaPatch[LEAD_FIELDS.provincia] = provinciaCanonica;
+    }
+    if (fields.ciudad) {
+      // La ciudad debe pertenecer a la provincia (canónica si se resolvió, o
+      // la que venga). Si no valida, se omite sin romper.
+      const provRef = provinciaCanonica ?? fields.provincia ?? "";
+      const ciudad = normalizeCiudad(country, provRef, fields.ciudad);
+      if (ciudad) fichaPatch[LEAD_FIELDS.ciudad] = ciudad;
+    }
+    if (fields.direccion) fichaPatch[LEAD_FIELDS.direccion] = fields.direccion;
+    if (fields.referencia) fichaPatch[LEAD_FIELDS.referencia] = fields.referencia;
+
+    if (Object.keys(fichaPatch).length > 0) {
+      await upsertFicha({ organizationId, contactId, ficha: fichaPatch });
+    }
+
+    publish(organizationId, {
+      type: "conversation.updated",
+      data: { conversation: { id: conversationId } },
+    });
+  } catch (err) {
+    console.error(
+      `[agente] captura de datos falló: ${
+        err instanceof Error ? err.message : String(err)
+      }`
+    );
+  }
 }
 
 async function appendLeadNote(

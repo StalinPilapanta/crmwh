@@ -37,10 +37,14 @@ export function buildAgentSystemPrompt(input: {
   kb: KbEntry[];
   stages: { name: string }[];
   kbImages?: Map<string, KbEntryImage[]>;
+  /** Provincias válidas del país de operación (para capturar datos de entrega). */
+  provincias?: string[];
 }): string {
   const { profile } = input;
   const stageNames = input.stages.map((s) => s.name).join(" | ");
   const hasImages = (input.kbImages?.size ?? 0) > 0;
+  const provincias = input.provincias ?? [];
+  const hasGeo = provincias.length > 0;
   return [
     `Eres "${profile.name}", el asistente de WhatsApp de este negocio. Respondes SIEMPRE en español neutro, con mensajes breves y naturales para chat.`,
     profile.tone ? `Tono: ${profile.tone}` : null,
@@ -61,12 +65,17 @@ export function buildAgentSystemPrompt(input: {
       hasImages
         ? '- {"action":"send_media","mediaId":"<id de la imagen>","reply":"..."} — enviar una imagen del conocimiento (reply opcional para acompañarla).'
         : null,
+      '- {"action":"update_ficha","fields":{"name":"...","phone":"...","provincia":"...","ciudad":"...","direccion":"...","referencia":"..."},"reply":"..."} — guardar los datos de entrega del cliente (incluye solo los campos que tengas; reply opcional).',
       "Reglas duras:",
       "- Si el cliente pide hablar con una persona/humano/asesor → handoff.",
       "- Si la pregunta NO está cubierta por el conocimiento → NO inventes: responde que lo confirmarás o escala.",
       "- Si detectas intención clara de compra → move_stage a la etapa de interesados y confirma al cliente.",
       hasImages
         ? "- Si el cliente pide ver una foto/imagen del producto y el bloque relevante tiene imágenes disponibles, usa send_media con ese id. Envía solo la imagen que corresponde y no repitas imágenes ya enviadas."
+        : null,
+      "- Cuando el cliente dé sus datos de entrega (nombre, provincia, ciudad, dirección, referencia, teléfono), usa update_ficha para guardarlos. Si falta algún dato para completar el pedido, pídelo con naturalidad.",
+      hasGeo
+        ? `- Provincia y ciudad deben corresponder al país de operación. Provincias válidas: ${provincias.join(", ")}. Usa el nombre correcto de la provincia; la ciudad debe pertenecer a esa provincia.`
         : null,
       "- JSON puro, sin markdown ni texto adicional.",
     ]

@@ -28,9 +28,33 @@ export const AgentAction = z.discriminatedUnion("action", [
     mediaId: z.string().min(1),
     reply: z.string().optional(),
   }),
+  z.object({
+    action: z.literal("update_ficha"),
+    fields: z
+      .object({
+        name: z.string().trim().min(1).max(120).optional(),
+        phone: z.string().trim().min(3).max(30).optional(),
+        provincia: z.string().trim().min(1).max(120).optional(),
+        ciudad: z.string().trim().min(1).max(120).optional(),
+        direccion: z.string().trim().min(1).max(300).optional(),
+        referencia: z.string().trim().min(1).max(300).optional(),
+      })
+      .refine((f) => Object.keys(f).length > 0, "al menos un campo"),
+    reply: z.string().optional(),
+  }),
 ]);
 
 export type AgentActionType = z.infer<typeof AgentAction>;
+
+/** Campos que el agente puede capturar del lead (para update_ficha). */
+export type LeadFichaFields = {
+  name?: string;
+  phone?: string;
+  provincia?: string;
+  ciudad?: string;
+  direccion?: string;
+  referencia?: string;
+};
 
 /**
  * Resuelve el id (shortId) de imagen devuelto por el modelo contra las imágenes

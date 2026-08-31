@@ -1,4 +1,5 @@
 import { DEFAULT_CURRENCY, isCurrency, type Currency } from "@/lib/money";
+import { DEFAULT_COUNTRY, getGeoCatalog } from "@/lib/geo";
 
 /**
  * White-label: nombre del CRM, acento y moneda por organización.
@@ -40,6 +41,8 @@ export type Branding = {
   accent: string; // hex del acento base elegido
   /** Moneda del negocio: la única que el tablero suma. */
   currency: Currency;
+  /** País de operación (código ISO): define el catálogo de provincias/ciudades. */
+  country: string;
   /** `null` = se dibuja con la inicial sobre el acento (ver `lib/favicon`). */
   favicon: BrandingFavicon | null;
 };
@@ -48,6 +51,7 @@ export const DEFAULT_BRANDING: Branding = {
   name: "Vocero",
   accent: "#3f5972",
   currency: DEFAULT_CURRENCY,
+  country: DEFAULT_COUNTRY,
   favicon: null,
 };
 
@@ -208,6 +212,11 @@ export function normalizeBranding(input: Partial<Branding> | null): Branding {
   const currency = isCurrency(input?.currency)
     ? input.currency
     : DEFAULT_BRANDING.currency;
+  // País soportado (tiene catálogo geográfico); si no, el default.
+  const country =
+    input?.country && getGeoCatalog(input.country)
+      ? input.country.toUpperCase()
+      : DEFAULT_BRANDING.country;
   // El icono no se toca desde el formulario de marca: se sube y se quita por
   // su propia ruta. Un PUT de nombre/color no debe borrarlo de rebote.
   const f = input?.favicon;
@@ -215,5 +224,5 @@ export function normalizeBranding(input: Partial<Branding> | null): Branding {
     f && typeof f.mime === "string" && Number.isFinite(f.version)
       ? { mime: f.mime, version: Math.max(1, Math.floor(f.version)) }
       : null;
-  return { name, accent, currency, favicon };
+  return { name, accent, currency, country, favicon };
 }

@@ -8,6 +8,7 @@ import { formatMoneyCents, parseMoneyToCents } from "@/lib/money";
 import { cn, formatPhone } from "@/lib/utils";
 import { ContactAvatar } from "@/components/avatar";
 import { FichaPanel } from "@/components/ficha-panel";
+import { LeadDataPanel, type LeadDataPatch } from "@/components/lead/lead-data-panel";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { PriorityPicker } from "./priority-picker";
@@ -83,6 +84,26 @@ export function LeadDrawer({
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ ficha: patch }),
+    }).catch(() => null);
+    void cargarFicha();
+  }
+
+  /** Datos estándar del lead: name/phone (columnas) y ficha (parche). */
+  async function guardarDatos(patch: LeadDataPatch) {
+    if (patch.ficha) {
+      setFicha((prev) => {
+        const next = { ...prev };
+        for (const [k, v] of Object.entries(patch.ficha!)) {
+          if (v === null) delete next[k];
+          else next[k] = v;
+        }
+        return next;
+      });
+    }
+    await fetch(`/api/contacts/${contactId}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(patch),
     }).catch(() => null);
     void cargarFicha();
   }
@@ -252,6 +273,16 @@ export function LeadDrawer({
               })}
             </div>
           </section>
+
+          {/* Datos estándar del lead (unificados con Inbox y Contactos). */}
+          <LeadDataPanel
+            data={{
+              name: lead.contact.name,
+              phone: lead.contact.phone,
+              ficha,
+            }}
+            onSave={guardarDatos}
+          />
 
           {/* Qué se sabe */}
           <FichaPanel ficha={ficha} onSave={guardarFicha} />

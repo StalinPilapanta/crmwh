@@ -14,6 +14,7 @@ import { ContactAvatar } from "@/components/avatar";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { FichaPanel } from "@/components/ficha-panel";
+import { LeadDataPanel, type LeadDataPatch } from "@/components/lead/lead-data-panel";
 
 const HANDOFF_LABELS: Record<string, string> = {
   cliente: "El cliente pidió un humano",
@@ -145,6 +146,26 @@ export function ContactPanel({
       body: JSON.stringify({ notes }),
     }).catch(() => null);
     setSavingNotes(false);
+  }
+
+  /** Datos estándar del lead: name/phone (columnas) y ficha (parche). */
+  async function saveLeadData(patch: LeadDataPatch) {
+    if (patch.ficha) {
+      setFicha((prev) => {
+        const next = { ...prev };
+        for (const [k, v] of Object.entries(patch.ficha!)) {
+          if (v === null) delete next[k];
+          else next[k] = v;
+        }
+        return next;
+      });
+    }
+    await fetch(`/api/contacts/${contactId}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(patch),
+    }).catch(() => null);
+    void refreshLive();
   }
 
   const currentIndex = stages.findIndex((s) => s.id === currentStageId);
@@ -311,6 +332,18 @@ export function ContactPanel({
             </ol>
           </section>
         )}
+
+        {/* Datos estándar del lead (unificados con Pipeline y Contactos). */}
+        <div className="border-b px-4 py-3">
+          <LeadDataPanel
+            data={{
+              name: conversation.contact.name,
+              phone: conversation.contact.phone,
+              ficha,
+            }}
+            onSave={saveLeadData}
+          />
+        </div>
 
         {/* Ficha: lo que se SABE del lead. Va antes de Notas —lo que alguien
             OPINA— porque es lo que se consulta a mitad de una conversación. */}

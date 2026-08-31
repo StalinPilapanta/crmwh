@@ -3,6 +3,7 @@ import { apiError, parseBody, withAuth } from "@/lib/api";
 import { getSessionOrNull } from "@/lib/auth/session";
 import { isValidHex, resolveAccentSet } from "@/lib/branding";
 import { CURRENCIES } from "@/lib/money";
+import { SUPPORTED_COUNTRY_CODES } from "@/lib/geo";
 import { getBranding, saveBranding } from "@/server/branding";
 
 export const dynamic = "force-dynamic";
@@ -19,6 +20,8 @@ const putSchema = z.object({
   accent: z.string().refine(isValidHex, "Color hex inválido (#rrggbb)"),
   /** La moneda del negocio: la única que el tablero suma. */
   currency: z.enum(CURRENCIES),
+  /** País de operación (define el catálogo de provincias/ciudades). */
+  country: z.enum(SUPPORTED_COUNTRY_CODES),
 });
 
 export const PUT = withAuth(async (session, req: Request) => {

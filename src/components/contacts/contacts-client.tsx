@@ -23,6 +23,7 @@ import { priorityRank } from "@/server/leads/priority";
 import { PriorityBadge } from "@/components/pipeline/priority-picker";
 import { NewContactDialog } from "./new-contact-dialog";
 import { StartConversation } from "./start-conversation";
+import { LeadDataPanel, type LeadDataPatch } from "@/components/lead/lead-data-panel";
 
 export function ContactsClient() {
   const router = useRouter();
@@ -238,6 +239,10 @@ export function ContactsClient() {
       {editing && (
         <EditDialog
           contact={editing}
+          onPatchData={async (body) => {
+            await patch(editing.id, body);
+            void refetch();
+          }}
           onClose={() => setEditing(null)}
           onSave={async (patchBody) => {
             await patch(editing.id, patchBody);
@@ -297,13 +302,30 @@ function EditDialog({
   contact,
   onClose,
   onSave,
+  onPatchData,
 }: {
   contact: ContactDto;
   onClose: () => void;
   onSave: (patch: { name: string; notes: string }) => Promise<void>;
+  onPatchData: (patch: LeadDataPatch) => Promise<void>;
 }) {
   const [name, setName] = useState(contact.name);
   const [notes, setNotes] = useState(contact.notes ?? "");
+  const [ficha, setFicha] = useState(contact.ficha ?? {});
+
+  async function saveLeadData(p: LeadDataPatch) {
+    if (p.ficha) {
+      setFicha((prev) => {
+        const next = { ...prev };
+        for (const [k, v] of Object.entries(p.ficha!)) {
+          if (v === null) delete next[k];
+          else next[k] = v as never;
+        }
+        return next;
+      });
+    }
+    await onPatchData(p);
+  }
 
   return (
     <div
@@ -335,6 +357,13 @@ function EditDialog({
               rows={4}
               value={notes}
               onChange={(e) => setNotes(e.target.value)}
+            />
+          </div>
+
+          <div className="border-t pt-3">
+            <LeadDataPanel
+              data={{ name: contact.name, phone: contact.phone, ficha }}
+              onSave={saveLeadData}
             />
           </div>
         </div>
