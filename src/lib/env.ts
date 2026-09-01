@@ -46,6 +46,8 @@ const envSchema = z.object({
   FOLLOWUP_CRON_KEY: z.string().optional(),
   FOLLOWUP_REMINDER_AFTER_H: z.coerce.number().min(0).default(20),
   FOLLOWUP_BATCH_LIMIT: z.coerce.number().int().min(1).default(200),
+  // Re-enganche contextual: minutos de espera tras pedir datos de entrega.
+  REENGAGE_AFTER_MIN: z.coerce.number().int().min(0).default(45),
   ALLOW_SIGNUP: z.string().optional(),
   AGENT_COALESCE_MS: z.coerce.number().int().min(0).default(6000),
   WA_MOCK_ENABLED: z.string().optional(),

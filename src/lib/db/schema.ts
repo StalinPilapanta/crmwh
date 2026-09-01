@@ -329,6 +329,9 @@ export const conversation = pgTable(
      * cuando el cliente responde. */
     followupStage: integer("followup_stage").notNull().default(0),
     followupLastAt: timestamp("followup_last_at"),
+    /** Re-enganche contextual: cuándo el agente pidió datos y está esperando. */
+    awaitingReplyAt: timestamp("awaiting_reply_at"),
+    reengageStage: integer("reengage_stage").notNull().default(0),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },
@@ -484,6 +487,7 @@ export const agentProfile = pgTable(
     /** Seguimiento automático de leads (re-enganche). */
     followupEnabled: boolean("followup_enabled").notNull().default(false),
     followupReminderText: text("followup_reminder_text"),
+    reengageText: text("reengage_text"),
     createdAt: timestamp("created_at").notNull().defaultNow(),
     updatedAt: timestamp("updated_at").notNull().defaultNow(),
   },

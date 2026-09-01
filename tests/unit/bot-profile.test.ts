@@ -43,6 +43,7 @@ function profileRow(overrides: Partial<AgentProfile> = {}): AgentProfile {
     greeting: "¡Hola! Soy Sofi 🦷",
     followupEnabled: false,
     followupReminderText: null,
+    reengageText: null,
     createdAt: new Date(),
     updatedAt: new Date(),
     ...overrides,

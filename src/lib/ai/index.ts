@@ -47,6 +47,7 @@ export async function chatJson<T>(
   }
 
   let lastDetail = "";
+  let lastRaw = "";
   for (let attempt = 1; attempt <= MAX_ATTEMPTS; attempt++) {
     const attemptMessages: ChatMessage[] =
       attempt === 1
@@ -61,6 +62,7 @@ export async function chatJson<T>(
           ];
     try {
       const raw = await callProvider(model, attemptMessages, opts?.timeoutMs);
+      lastRaw = raw;
       const extracted = extractJson(raw);
       if (extracted === null) {
         lastDetail = `sin JSON extraíble (raw=${truncate(raw)})`;
@@ -79,6 +81,18 @@ export async function chatJson<T>(
       if (attempt < MAX_ATTEMPTS) {
         await sleep(RETRY_DELAY_MS * attempt);
       }
+    }
+  }
+
+  // Fallback de prosa: si el modelo respondió algo útil pero no como JSON, se
+  // intenta envolver como {"action":"reply","text":"..."} y validar contra el
+  // schema. Si funciona, el cliente recibe la respuesta en vez de silencio.
+  const fallbackText = lastRaw.trim();
+  if (fallbackText.length > 0) {
+    const fallback = { action: "reply", text: fallbackText };
+    const parsed = schema.safeParse(fallback);
+    if (parsed.success) {
+      return { ok: true, data: parsed.data, raw: lastRaw };
     }
   }
 
@@ -131,6 +145,7 @@ async function callProvider(
  * Extracción robusta de JSON de una respuesta de modelo:
  * 1) bloque ```json ... ``` (o ``` ... ```), 2) el texto completo,
  * 3) del primer `{` al último `}`.
+ * Cada candidato pasa por saneo de comas colgantes antes de parsear.
  */
 export function extractJson(raw: string): unknown | null {
   const candidates: string[] = [];
@@ -143,13 +158,24 @@ export function extractJson(raw: string): unknown | null {
     candidates.push(raw.slice(first, last + 1));
   }
   for (const c of candidates) {
+    // Intento directo.
     try {
       return JSON.parse(c);
     } catch {
-      // siguiente candidato
+      // Intento con saneo de comas colgantes (,} / ,]).
+      try {
+        return JSON.parse(sanitizeTrailingCommas(c));
+      } catch {
+        // siguiente candidato
+      }
     }
   }
   return null;
+}
+
+/** Quita comas seguidas de cierre `}` o `]` (error frecuente del LLM). */
+function sanitizeTrailingCommas(s: string): string {
+  return s.replace(/,\s*([}\]])/g, "$1");
 }
 
 function truncate(s: string, n = 300): string {

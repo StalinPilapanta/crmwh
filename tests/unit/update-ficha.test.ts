@@ -18,6 +18,7 @@ function baseProfile() {
     greeting: null,
     followupEnabled: false,
     followupReminderText: null,
+    reengageText: null,
     createdAt: new Date(),
     updatedAt: new Date(),
   } as never;

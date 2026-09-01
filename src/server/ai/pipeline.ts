@@ -15,6 +15,7 @@ import { buildAgentSystemPrompt } from "@/server/ai/prompts";
 import { resolveInboundContent } from "@/server/ai/resolve-content";
 import { kbImagesByEntry } from "@/server/kb/media";
 import { readMediaFile } from "@/server/whatsapp/media";
+import { markReadAndTyping } from "@/server/whatsapp/typing";
 import { upsertFicha } from "@/server/bot/ficha";
 import { getBranding } from "@/server/branding";
 import { listProvincias, normalizeCiudad, normalizeProvincia } from "@/lib/geo";
@@ -236,11 +237,20 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
       })),
   ];
 
+  // Indicador "escribiendo…" en WhatsApp (best-effort, no bloquea el turno).
+  void markReadAndTyping({ organizationId, conversationId });
+
   const result = await chatJson(AgentAction, messages);
   if (!result.ok) {
     if (result.error === "not_configured") return;
-    // Fallo persistente del proveedor o salida imposible → escalar (FR-022).
+    // Fallo persistente del proveedor o salida imposible → cortesía al cliente
+    // y escalar en segundo plano (nunca silencio).
     console.error(`[agente] fallo del proveedor (raw): ${result.detail}`);
+    await deliverReply(
+      conversation,
+      "Permíteme un momento, enseguida te confirmo 🙌",
+      false
+    );
     await applyHandoff(conversationId, organizationId, "error");
     return;
   }
@@ -301,6 +311,12 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
         action.fields,
         country
       );
+      // El agente recabó/pidió datos → marca que espera respuesta del cliente
+      // para el re-enganche contextual.
+      await db
+        .update(schema.conversation)
+        .set({ awaitingReplyAt: new Date(), reengageStage: 0, updatedAt: new Date() })
+        .where(eq(schema.conversation.id, conversationId));
       if (action.reply) await deliverReply(conversation, action.reply, replyWithVoice);
       return;
     }

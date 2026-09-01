@@ -77,7 +77,7 @@ describe("chatJson (reintentos y errores tipados)", () => {
     expect(fetchMock).toHaveBeenCalledTimes(3); // agotó los 3 intentos
   });
 
-  it("salida que nunca cumple el esquema → invalid_output", async () => {
+  it("salida que nunca cumple el esquema pero tiene texto → fallback a reply", async () => {
     const fetchMock = vi
       .fn()
       .mockImplementation(() =>
@@ -86,8 +86,9 @@ describe("chatJson (reintentos y errores tipados)", () => {
     vi.stubGlobal("fetch", fetchMock);
 
     const result = await chatJson(schema, [{ role: "user", content: "hola" }]);
-    expect(result.ok).toBe(false);
-    if (!result.ok) expect(result.error).toBe("invalid_output");
+    // Gracias al fallback de prosa, se envuelve como reply en vez de quedar mudo.
+    expect(result.ok).toBe(true);
+    if (result.ok) expect(result.data).toHaveProperty("action", "reply");
   });
 
   it("sin token → not_configured sin tocar la red", async () => {

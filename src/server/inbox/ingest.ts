@@ -411,6 +411,9 @@ export async function ingestInboundMessage(input: {
       // recibir un nuevo recordatorio si vuelve a quedar inactivo.
       followupStage: 0,
       followupLastAt: null,
+      // También limpia el re-enganche contextual (pidió datos y respondió).
+      awaitingReplyAt: null,
+      reengageStage: 0,
       updatedAt: new Date(),
     })
     .where(eq(schema.conversation.id, conversation.id));
