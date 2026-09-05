@@ -52,7 +52,10 @@ const createSchema = z.object({
 
 export const POST = withAuth(async (session, req: Request) => {
   const body = await parseBody(req, createSchema);
-  if (!body.ok) return body.response;
+  if (!body.ok) {
+    console.warn("[products.create] body inválido");
+    return body.response;
+  }
 
   const db = getDb();
   const inserted = await db
@@ -70,5 +73,6 @@ export const POST = withAuth(async (session, req: Request) => {
     })
     .returning();
   if (!inserted[0]) return apiError(500, "internal", "No se pudo crear");
+  console.log("[products.create] creado:", inserted[0].id);
   return Response.json({ product: inserted[0] }, { status: 201 });
 });
