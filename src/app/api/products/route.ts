@@ -47,7 +47,7 @@ const createSchema = z.object({
     .optional()
     .or(z.literal("")),
   active: z.boolean().optional(),
-  productPrompt: z.string().trim().max(8000).optional(),
+  productPrompt: z.string().trim().max(12000).optional(),
 });
 
 export const POST = withAuth(async (session, req: Request) => {

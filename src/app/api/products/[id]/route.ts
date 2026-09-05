@@ -22,7 +22,7 @@ const patchSchema = z.object({
     .optional()
     .or(z.literal("")),
   active: z.boolean().optional(),
-  productPrompt: z.string().trim().max(8000).nullable().optional(),
+  productPrompt: z.string().trim().max(12000).nullable().optional(),
 });
 
 export const PATCH = withAuth(async (session, req: Request, ctx: Params) => {

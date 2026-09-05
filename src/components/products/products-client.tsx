@@ -195,7 +195,7 @@ function ProductDialog({
   const [price, setPrice] = useState(
     product ? (product.priceCents / 100).toFixed(2) : ""
   );
-  const [currency, setCurrency] = useState(product?.currency ?? CURRENCIES[0]);
+  const [currency, setCurrency] = useState(product?.currency ?? "USD");
   const [type, setType] = useState<ProductType>(product?.type ?? "fisico");
   const [dropiId, setDropiId] = useState(product?.dropiId ?? "");
   const [active, setActive] = useState(product?.active ?? true);
@@ -235,8 +235,8 @@ function ProductDialog({
       setSaving(false);
       return;
     }
-    if (prompt.trim().length > 8000) {
-      setError("El prompt del producto es demasiado largo (máx. 8000 caracteres)");
+    if (prompt.trim().length > 12000) {
+      setError("El prompt del producto es demasiado largo (máx. 12000 caracteres)");
       setSaving(false);
       return;
     }
@@ -324,15 +324,21 @@ function ProductDialog({
     setPending((prev) => prev.filter((_, i) => i !== index));
   }
 
+  // El overlay cierra solo si el gesto EMPIEZA y TERMINA en él mismo. Sin esto,
+  // arrastrar el "resize" del textarea suelta el mouse fuera del diálogo y
+  // cerraba la ventana por error.
+  const [downOnOverlay, setDownOnOverlay] = useState(false);
+
   return (
     <div
       className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-overlay p-4"
-      onClick={onClose}
+      onMouseDown={(e) => setDownOnOverlay(e.target === e.currentTarget)}
+      onMouseUp={(e) => {
+        if (downOnOverlay && e.target === e.currentTarget) onClose();
+        setDownOnOverlay(false);
+      }}
     >
-      <div
-        className="max-h-[88dvh] w-full max-w-lg overflow-y-auto rounded-lg border bg-card p-5 shadow-xl"
-        onClick={(e) => e.stopPropagation()}
-      >
+      <div className="max-h-[88dvh] w-full max-w-lg overflow-y-auto rounded-lg border bg-card p-5 shadow-xl">
         <h3 className="mb-4 font-semibold">
           {isEdit ? "Configurar producto" : "Nuevo producto"}
         </h3>
@@ -404,11 +410,15 @@ function ProductDialog({
             <Label htmlFor="p-prompt">Prompt del producto (opcional)</Label>
             <Textarea
               id="p-prompt"
-              rows={3}
+              rows={5}
               value={prompt}
               onChange={(e) => setPrompt(e.target.value)}
               placeholder="Cómo debe vender el agente este producto: beneficios, objeciones, etc."
+              className="resize-y"
             />
+            <p className="text-right text-xs text-text-3">
+              {prompt.trim().length}/12000
+            </p>
           </div>
 
           <label className="flex items-center gap-2 text-sm">
