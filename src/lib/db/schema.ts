@@ -542,6 +542,61 @@ export const kbEntryMedia = pgTable(
   ]
 );
 
+/**
+ * Catálogo de productos del negocio. El agente toma los ACTIVOS como contexto
+ * de venta (nombre, precio, tipo, prompt) y puede enviar sus imágenes.
+ * Precio en centavos enteros (exactitud monetaria, como lead.amountCents).
+ */
+export const product = pgTable(
+  "product",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    name: text("name").notNull(),
+    priceCents: integer("price_cents").notNull(),
+    currency: text("currency").notNull(),
+    type: text("type", { enum: ["fisico", "virtual", "servicio"] }).notNull(),
+    /** ID en Dropi u otra plataforma (solo dígitos); NULL si no aplica. */
+    dropiId: text("dropi_id"),
+    active: boolean("active").notNull().default(true),
+    /** Instrucciones de venta específicas de este producto. */
+    productPrompt: text("product_prompt"),
+    position: integer("position").notNull().default(0),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [index("product_org_idx").on(t.organizationId, t.createdAt)]
+);
+
+/** Imágenes de un producto (mismo patrón que kbEntryMedia). */
+export const productMedia = pgTable(
+  "product_media",
+  {
+    id: text("id").primaryKey(),
+    organizationId: text("organization_id")
+      .notNull()
+      .references(() => organization.id, { onDelete: "cascade" }),
+    productId: text("product_id")
+      .notNull()
+      .references(() => product.id, { onDelete: "cascade" }),
+    mediaAssetId: text("media_asset_id")
+      .notNull()
+      .references(() => mediaAsset.id, { onDelete: "cascade" }),
+    shortId: text("short_id").notNull(),
+    position: integer("position").notNull().default(0),
+    createdAt: timestamp("created_at").notNull().defaultNow(),
+    updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  },
+  (t) => [
+    index("product_media_org_idx").on(t.organizationId),
+    index("product_media_product_idx").on(t.productId),
+    uniqueIndex("product_media_product_asset_uq").on(t.productId, t.mediaAssetId),
+    uniqueIndex("product_media_short_id_uq").on(t.organizationId, t.shortId),
+  ]
+);
+
 export const template = pgTable(
   "template",
   {

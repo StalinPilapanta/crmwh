@@ -8,6 +8,7 @@ import {
   Inbox,
   Kanban,
   LogOut,
+  Package,
   Settings,
   Sparkles,
   Users,
@@ -25,6 +26,7 @@ const NAV = [
   { href: "/inbox", label: "Bandeja", icon: Inbox, badge: true },
   { href: "/pipeline", label: "Pipeline", icon: Kanban },
   { href: "/contacts", label: "Contactos", icon: Users },
+  { href: "/products", label: "Productos", icon: Package },
   { href: "/agent", label: "Agente", icon: Sparkles },
   { href: "/lab", label: "Laboratorio", icon: FlaskConical },
 ] as const;

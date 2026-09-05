@@ -1,4 +1,5 @@
 import type { schema } from "@/lib/db";
+import { formatMoneyCents } from "@/lib/money";
 
 type AgentProfile = typeof schema.agentProfile.$inferSelect;
 type KbEntry = typeof schema.kbEntry.$inferSelect;
@@ -8,6 +9,31 @@ export const JUDGE_MARKER = "[JUEZ]";
 
 /** Imágenes de un bloque de KB, para exponer sus shortId al agente. */
 export type KbEntryImage = { shortId: string };
+
+/** Producto del catálogo para el contexto del agente. */
+export type PromptProduct = {
+  name: string;
+  priceCents: number;
+  currency: string;
+  type: string;
+  productPrompt: string | null;
+  imageShortIds: string[];
+};
+
+/** Renderiza el catálogo de productos activos para el system prompt. */
+export function renderProducts(products: PromptProduct[]): string {
+  return products
+    .map((p) => {
+      const price = formatMoneyCents(p.priceCents, p.currency) ?? `${p.priceCents / 100} ${p.currency}`;
+      const lines = [`• ${p.name} — ${price} (${p.type})`];
+      if (p.productPrompt?.trim()) lines.push(`  Cómo venderlo: ${p.productPrompt.trim()}`);
+      if (p.imageShortIds.length > 0) {
+        lines.push(`  [imágenes disponibles: ${p.imageShortIds.join(", ")}]`);
+      }
+      return lines.join("\n");
+    })
+    .join("\n");
+}
 
 export function renderKb(
   entries: KbEntry[],
@@ -39,10 +65,18 @@ export function buildAgentSystemPrompt(input: {
   kbImages?: Map<string, KbEntryImage[]>;
   /** Provincias válidas del país de operación (para capturar datos de entrega). */
   provincias?: string[];
+  /** Catálogo de productos activos. */
+  products?: PromptProduct[];
 }): string {
   const { profile } = input;
   const stageNames = input.stages.map((s) => s.name).join(" | ");
-  const hasImages = (input.kbImages?.size ?? 0) > 0;
+  const products = input.products ?? [];
+  const productImageCount = products.reduce(
+    (n, p) => n + p.imageShortIds.length,
+    0
+  );
+  const hasImages =
+    (input.kbImages?.size ?? 0) > 0 || productImageCount > 0;
   const provincias = input.provincias ?? [];
   const hasGeo = provincias.length > 0;
   return [
@@ -65,6 +99,9 @@ export function buildAgentSystemPrompt(input: {
       : null,
     profile.greeting ? `Saludo sugerido para conversaciones nuevas: ${profile.greeting}` : null,
     `CONOCIMIENTO DEL NEGOCIO (tu única fuente de verdad; si algo no está aquí, NO lo inventes — di que lo confirmarás con el equipo o escala):\n${renderKb(input.kb, input.kbImages)}`,
+    products.length > 0
+      ? `CATÁLOGO DE PRODUCTOS ACTIVOS (usa SOLO estos productos y precios; no inventes productos ni precios):\n${renderProducts(products)}`
+      : null,
     `Etapas del pipeline disponibles: ${stageNames}`,
     [
       "En cada turno respondes ÚNICAMENTE un objeto JSON con UNA acción:",

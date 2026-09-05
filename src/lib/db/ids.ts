@@ -20,6 +20,8 @@ const prefixes = {
   testCase: "case",
   mediaAsset: "ma",
   kbEntryMedia: "kbm",
+  product: "prod",
+  productMedia: "prodm",
 } as const;
 
 export type IdKind = keyof typeof prefixes;

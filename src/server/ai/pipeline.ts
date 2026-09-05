@@ -14,6 +14,7 @@ import { matchesHandoffIntent } from "@/server/ai/handoff";
 import { buildAgentSystemPrompt } from "@/server/ai/prompts";
 import { resolveInboundContent } from "@/server/ai/resolve-content";
 import { kbImagesByEntry } from "@/server/kb/media";
+import { productImagesByOrg } from "@/server/products/media";
 import { readMediaFile } from "@/server/whatsapp/media";
 import { markReadAndTyping } from "@/server/whatsapp/typing";
 import { upsertFicha } from "@/server/bot/ficha";
@@ -218,6 +219,27 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
   const country = branding.country;
   const provincias = listProvincias(country);
 
+  // Catálogo de productos ACTIVOS + sus imágenes (para vender y enviar fotos).
+  const activeProducts = await db
+    .select()
+    .from(schema.product)
+    .where(
+      and(
+        eq(schema.product.organizationId, organizationId),
+        eq(schema.product.active, true)
+      )
+    )
+    .orderBy(asc(schema.product.createdAt));
+  const productImages = await productImagesByOrg(organizationId);
+  const productsForPrompt = activeProducts.map((p) => ({
+    name: p.name,
+    priceCents: p.priceCents,
+    currency: p.currency,
+    type: p.type,
+    productPrompt: p.productPrompt,
+    imageShortIds: (productImages.get(p.id) ?? []).map((i) => i.shortId),
+  }));
+
   const messages: ChatMessage[] = [
     {
       role: "system",
@@ -227,6 +249,7 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
         stages,
         kbImages: kbImagesForPrompt,
         provincias,
+        products: productsForPrompt,
       }),
     },
     ...resolved
@@ -276,9 +299,11 @@ export async function runAgentTurn(conversationId: string): Promise<void> {
 
   if (action.action === "send_media") {
     // Aplana las imágenes de la org y resuelve el shortId pedido.
-    const allImages = [...kbImages.values()]
-      .flat()
-      .map((i) => ({ shortId: i.shortId, assetId: i.assetId }));
+    // Imágenes de KB + de productos (mismo mecanismo de envío por shortId).
+    const allImages = [
+      ...[...kbImages.values()].flat(),
+      ...[...productImages.values()].flat(),
+    ].map((i) => ({ shortId: i.shortId, assetId: i.assetId }));
     const match = resolveKbMedia(action.mediaId, allImages);
     if (!match) {
       // Id inexistente → degradar a reply/none (nunca envía algo fuera de la org).
