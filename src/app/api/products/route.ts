@@ -47,15 +47,12 @@ const createSchema = z.object({
     .optional()
     .or(z.literal("")),
   active: z.boolean().optional(),
-  productPrompt: z.string().trim().max(4000).optional(),
+  productPrompt: z.string().trim().max(8000).optional(),
 });
 
 export const POST = withAuth(async (session, req: Request) => {
   const body = await parseBody(req, createSchema);
-  if (!body.ok) {
-    console.warn("[products.create] body inválido");
-    return body.response;
-  }
+  if (!body.ok) return body.response;
 
   const db = getDb();
   const inserted = await db
@@ -73,6 +70,5 @@ export const POST = withAuth(async (session, req: Request) => {
     })
     .returning();
   if (!inserted[0]) return apiError(500, "internal", "No se pudo crear");
-  console.log("[products.create] creado:", inserted[0].id);
   return Response.json({ product: inserted[0] }, { status: 201 });
 });

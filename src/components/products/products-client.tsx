@@ -201,8 +201,25 @@ function ProductDialog({
   const [active, setActive] = useState(product?.active ?? true);
   const [prompt, setPrompt] = useState(product?.productPrompt ?? "");
   const [images, setImages] = useState<ProductImage[]>(product?.images ?? []);
+  // En creación no hay id todavía: las imágenes elegidas quedan PENDIENTES y se
+  // suben en cuanto el producto existe. En edición se suben al instante.
+  const [pending, setPending] = useState<File[]>([]);
   const [saving, setSaving] = useState(false);
+  const [deleting, setDeleting] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  /** Sube un archivo a un producto ya existente; devuelve la imagen creada. */
+  async function uploadTo(productId: string, file: File): Promise<ProductImage> {
+    const form = new FormData();
+    form.append("file", file);
+    const res = await fetch(`/api/products/${productId}/media`, {
+      method: "POST",
+      body: form,
+    });
+    if (!res.ok) throw new Error(await errorMessage(res, "No se pudo subir la imagen"));
+    const data = await res.json();
+    return data.image as ProductImage;
+  }
 
   async function save() {
     setSaving(true);
@@ -215,6 +232,11 @@ function ProductDialog({
     }
     if (dropiId && !/^\d{1,12}$/.test(dropiId.trim())) {
       setError("El ID de Dropi debe ser solo números");
+      setSaving(false);
+      return;
+    }
+    if (prompt.trim().length > 8000) {
+      setError("El prompt del producto es demasiado largo (máx. 8000 caracteres)");
       setSaving(false);
       return;
     }
@@ -243,9 +265,13 @@ function ProductDialog({
           body: JSON.stringify(payload),
         });
         if (!res.ok) throw new Error(await errorMessage(res, "No se pudo crear"));
-        // Nota: las imágenes se suben tras crear (necesitan el id). Aquí, si el
-        // usuario ya seleccionó archivos, se manejan en el panel de imágenes solo
-        // en modo edición. Para creación se sube al abrir el producto recién creado.
+        const data = await res.json();
+        const newId: string = data.product.id;
+        // Ahora que el producto existe, subimos las imágenes que se eligieron
+        // durante la creación.
+        for (const file of pending) {
+          await uploadTo(newId, file);
+        }
       }
       onSaved();
     } catch (e) {
@@ -254,20 +280,35 @@ function ProductDialog({
     }
   }
 
-  async function uploadImage(file: File) {
-    if (!product) return; // solo en edición (necesita id)
-    const form = new FormData();
-    form.append("file", file);
-    const res = await fetch(`/api/products/${product.id}/media`, {
-      method: "POST",
-      body: form,
-    });
-    if (res.ok) {
-      const data = await res.json();
-      setImages((prev) => [...prev, data.image]);
+  async function deleteProduct() {
+    if (!product) return;
+    if (!confirm(`¿Eliminar "${product.name}"? Esta acción no se puede deshacer.`)) {
+      return;
+    }
+    setDeleting(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/products/${product.id}`, { method: "DELETE" });
+      if (!res.ok) throw new Error(await errorMessage(res, "No se pudo eliminar"));
+      onSaved();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Error");
+      setDeleting(false);
+    }
+  }
+
+  /** Al elegir un archivo: en edición sube ya; en creación lo deja pendiente. */
+  async function pickImage(file: File) {
+    setError(null);
+    if (isEdit && product) {
+      try {
+        const image = await uploadTo(product.id, file);
+        setImages((prev) => [...prev, image]);
+      } catch (e) {
+        setError(e instanceof Error ? e.message : "No se pudo subir la imagen");
+      }
     } else {
-      const err = await res.json().catch(() => null);
-      setError(err?.error?.message ?? "No se pudo subir la imagen");
+      setPending((prev) => [...prev, file]);
     }
   }
 
@@ -277,6 +318,10 @@ function ProductDialog({
       method: "DELETE",
     }).catch(() => null);
     setImages((prev) => prev.filter((i) => i.id !== imageId));
+  }
+
+  function removePending(index: number) {
+    setPending((prev) => prev.filter((_, i) => i !== index));
   }
 
   return (
@@ -375,58 +420,92 @@ function ProductDialog({
             Activo (el agente lo usa para vender)
           </label>
 
-          {/* Imágenes: solo en edición (requieren el id del producto). */}
-          {isEdit ? (
-            <div className="space-y-2 border-t pt-3">
-              <Label>Imágenes del producto</Label>
-              <Input
-                type="file"
-                accept="image/jpeg,image/png,image/webp"
-                onChange={(e) => {
-                  const f = e.target.files?.[0];
-                  if (f) void uploadImage(f);
-                  e.target.value = "";
-                }}
-              />
-              {images.length > 0 && (
-                <div className="flex flex-wrap gap-2">
-                  {images.map((img) => (
-                    <div key={img.id} className="group relative">
-                      {/* eslint-disable-next-line @next/next/no-img-element */}
-                      <img
-                        src={img.url}
-                        alt="Producto"
-                        className="h-16 w-16 rounded object-cover"
-                      />
-                      <button
-                        type="button"
-                        aria-label="Quitar imagen"
-                        className="absolute -right-1 -top-1 rounded-full bg-destructive p-0.5 text-white opacity-0 transition-opacity group-hover:opacity-100"
-                        onClick={() => void removeImg(img.id)}
-                      >
-                        <Trash2 className="h-3 w-3" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              )}
-            </div>
-          ) : (
-            <p className="border-t pt-3 text-xs text-text-3">
-              Guarda el producto para poder agregar imágenes.
-            </p>
-          )}
+          <div className="space-y-2 border-t pt-3">
+            <Label>Imágenes del producto</Label>
+            <Input
+              type="file"
+              accept="image/jpeg,image/png,image/webp"
+              onChange={(e) => {
+                const f = e.target.files?.[0];
+                if (f) void pickImage(f);
+                e.target.value = "";
+              }}
+            />
+            {!isEdit && (
+              <p className="text-xs text-text-3">
+                Las imágenes se guardarán al crear el producto.
+              </p>
+            )}
+            {(images.length > 0 || pending.length > 0) && (
+              <div className="flex flex-wrap gap-2">
+                {images.map((img) => (
+                  <div key={img.id} className="group relative">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={img.url}
+                      alt="Producto"
+                      className="h-16 w-16 rounded object-cover"
+                    />
+                    <button
+                      type="button"
+                      aria-label="Quitar imagen"
+                      className="absolute -right-1 -top-1 rounded-full bg-destructive p-0.5 text-white opacity-0 transition-opacity group-hover:opacity-100"
+                      onClick={() => void removeImg(img.id)}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+                {pending.map((file, i) => (
+                  <div key={`pending-${i}`} className="group relative">
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={URL.createObjectURL(file)}
+                      alt="Pendiente"
+                      className="h-16 w-16 rounded object-cover opacity-70"
+                    />
+                    <button
+                      type="button"
+                      aria-label="Quitar imagen pendiente"
+                      className="absolute -right-1 -top-1 rounded-full bg-destructive p-0.5 text-white opacity-0 transition-opacity group-hover:opacity-100"
+                      onClick={() => removePending(i)}
+                    >
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
 
           {error && <p className="text-xs text-destructive">{error}</p>}
         </div>
 
-        <div className="mt-4 flex justify-end gap-2">
-          <Button variant="ghost" onClick={onClose}>
-            Cancelar
-          </Button>
-          <Button disabled={!name.trim() || !price.trim() || saving} onClick={() => void save()}>
-            {saving ? "Guardando…" : isEdit ? "Guardar" : "Crear"}
-          </Button>
+        <div className="mt-4 flex items-center justify-between gap-2">
+          {isEdit ? (
+            <Button
+              variant="ghost"
+              className="text-destructive hover:text-destructive"
+              disabled={saving || deleting}
+              onClick={() => void deleteProduct()}
+            >
+              <Trash2 className="h-4 w-4" />
+              {deleting ? "Eliminando…" : "Eliminar"}
+            </Button>
+          ) : (
+            <span />
+          )}
+          <div className="flex gap-2">
+            <Button variant="ghost" onClick={onClose}>
+              Cancelar
+            </Button>
+            <Button
+              disabled={!name.trim() || !price.trim() || saving || deleting}
+              onClick={() => void save()}
+            >
+              {saving ? "Guardando…" : isEdit ? "Guardar" : "Crear"}
+            </Button>
+          </div>
         </div>
       </div>
     </div>
