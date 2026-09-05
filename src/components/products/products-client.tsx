@@ -31,6 +31,12 @@ const TYPE_LABELS: Record<ProductType, string> = {
   servicio: "servicio",
 };
 
+/** Extrae el mensaje de error real de la API ({ error: { message } }). */
+async function errorMessage(res: Response, fallback: string): Promise<string> {
+  const data = await res.json().catch(() => null);
+  return data?.error?.message ?? fallback;
+}
+
 export function ProductsClient() {
   const [products, setProducts] = useState<Product[]>([]);
   const [query, setQuery] = useState("");
@@ -229,14 +235,14 @@ function ProductDialog({
           headers: { "content-type": "application/json" },
           body: JSON.stringify(payload),
         });
-        if (!res.ok) throw new Error("No se pudo guardar");
+        if (!res.ok) throw new Error(await errorMessage(res, "No se pudo guardar"));
       } else {
         const res = await fetch("/api/products", {
           method: "POST",
           headers: { "content-type": "application/json" },
           body: JSON.stringify(payload),
         });
-        if (!res.ok) throw new Error("No se pudo crear");
+        if (!res.ok) throw new Error(await errorMessage(res, "No se pudo crear"));
         // Nota: las imágenes se suben tras crear (necesitan el id). Aquí, si el
         // usuario ya seleccionó archivos, se manejan en el panel de imágenes solo
         // en modo edición. Para creación se sube al abrir el producto recién creado.
