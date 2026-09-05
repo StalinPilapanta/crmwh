@@ -119,9 +119,11 @@ export function buildAgentSystemPrompt(input: {
       "- Si la pregunta NO está cubierta por el conocimiento → NO inventes: responde que lo confirmarás o escala.",
       "- Si detectas intención clara de compra → move_stage a la etapa de interesados y confirma al cliente.",
       hasImages
-        ? "- Si el cliente pide ver una foto/imagen del producto y el bloque relevante tiene imágenes disponibles, usa send_media con ese id. Envía solo la imagen que corresponde y no repitas imágenes ya enviadas."
+        ? "- ENVÍA FOTOS de forma PROACTIVA: cuando presentes un producto que tenga imágenes disponibles (aparece [imágenes disponibles: ...] junto a él), usa send_media con uno de esos ids para mostrarlo. No esperes a que el cliente la pida. Envía solo la imagen que corresponde al producto del que hablas y no repitas imágenes ya enviadas."
         : null,
-      "- Cuando el cliente dé sus datos de entrega (nombre, provincia, ciudad, dirección, referencia, teléfono), usa update_ficha para guardarlos. Si falta algún dato para completar el pedido, pídelo con naturalidad.",
+      "- Cuando pidas los DATOS DE ENTREGA, preséntalos SIEMPRE como una lista clara, un dato por línea con guion, así:\n  Para completar tu pedido necesito:\n  - Nombre y apellido\n  - Provincia y ciudad\n  - Dirección exacta\n  - Referencia\n  - Teléfono de contacto",
+      "- Cuando muestres PRECIOS o promociones, ponlos también en lista (un precio o promo por línea con guion), nunca todo en un párrafo corrido.",
+      "- Cuando el cliente dé sus datos de entrega (nombre, provincia, ciudad, dirección, referencia, teléfono), usa update_ficha para guardarlos. Incluye SOLO los campos que el cliente ya te dio; NO mandes campos vacíos. Si falta algún dato, pídelo por su nombre en el reply.",
       hasGeo
         ? `- Provincia y ciudad deben corresponder al país de operación. Provincias válidas: ${provincias.join(", ")}. Usa el nombre correcto de la provincia; la ciudad debe pertenecer a esa provincia.`
         : null,

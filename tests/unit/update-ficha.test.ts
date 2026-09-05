@@ -51,6 +51,34 @@ describe("AgentAction update_ficha (schema)", () => {
     const p = AgentAction.safeParse({ action: "update_ficha" });
     expect(p.success).toBe(false);
   });
+
+  it("tolera campos vacíos: los ignora en vez de rechazar la acción", () => {
+    const p = AgentAction.safeParse({
+      action: "update_ficha",
+      fields: {
+        name: "Cristian Morales",
+        provincia: "Cotopaxi",
+        ciudad: "Sigchos",
+        direccion: "calle C",
+        referencia: "", // el modelo aún no la tiene
+      },
+      reply: "¿Me das una referencia?",
+    });
+    expect(p.success).toBe(true);
+    if (p.success && p.data.action === "update_ficha") {
+      expect(p.data.fields.referencia).toBeUndefined();
+      expect(p.data.fields.name).toBe("Cristian Morales");
+      expect(p.data.fields.ciudad).toBe("Sigchos");
+    }
+  });
+
+  it("rechaza cuando TODOS los campos van vacíos", () => {
+    const p = AgentAction.safeParse({
+      action: "update_ficha",
+      fields: { name: "", provincia: "", referencia: "  " },
+    });
+    expect(p.success).toBe(false);
+  });
 });
 
 describe("prompt con provincias", () => {

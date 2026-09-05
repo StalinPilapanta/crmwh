@@ -1,6 +1,24 @@
 import { z } from "zod";
 
 /**
+ * Campo de texto opcional del agente que tolera la cadena vacía. El modelo
+ * suele emitir `"referencia":""` para los datos que todavía no tiene; tratar
+ * eso como error rechazaba TODA la acción `update_ficha` y el turno se caía.
+ * Aquí `""`/espacios → `undefined` (no informado), y se recorta al máximo.
+ */
+function emptyToUndef(max: number): z.ZodType<string | undefined> {
+  return z
+    .string()
+    .max(max)
+    .optional()
+    .transform((v) => {
+      if (v === undefined) return undefined;
+      const t = v.trim();
+      return t === "" ? undefined : t;
+    });
+}
+
+/**
  * Acción tipada del agente: exactamente UNA por turno (FR-021).
  * El servidor valida cada acción contra sus allowlists (etapas de la org);
  * lo que no valida se degrada, nunca se ejecuta a ciegas.
@@ -32,14 +50,20 @@ export const AgentAction = z.discriminatedUnion("action", [
     action: z.literal("update_ficha"),
     fields: z
       .object({
-        name: z.string().trim().min(1).max(120).optional(),
-        phone: z.string().trim().min(3).max(30).optional(),
-        provincia: z.string().trim().min(1).max(120).optional(),
-        ciudad: z.string().trim().min(1).max(120).optional(),
-        direccion: z.string().trim().min(1).max(300).optional(),
-        referencia: z.string().trim().min(1).max(300).optional(),
+        // Un campo vacío ("" o solo espacios) NO es un error: el modelo suele
+        // mandar los campos que aún no tiene como cadena vacía. Se normaliza a
+        // undefined para que la acción completa no se rechace por eso.
+        name: emptyToUndef(120),
+        phone: emptyToUndef(30),
+        provincia: emptyToUndef(120),
+        ciudad: emptyToUndef(120),
+        direccion: emptyToUndef(300),
+        referencia: emptyToUndef(300),
       })
-      .refine((f) => Object.keys(f).length > 0, "al menos un campo"),
+      .refine(
+        (f) => Object.values(f).some((v) => v !== undefined),
+        "al menos un campo con valor"
+      ),
     reply: z.string().optional(),
   }),
 ]);
